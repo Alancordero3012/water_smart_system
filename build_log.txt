@@ -1,0 +1,25 @@
+  1s compiling builders/jit
+  2s compiling builders/jit
+  3s compiling builders/jit
+  4s compiling builders/jit
+  5s compiling builders/jit
+  0s freezed on 8 inputs; lib/data/services/mock_water_service.dart
+  2s freezed on 8 inputs: 1 same, 2 no-op; spent 1s analyzing; lib/domain/providers.dart
+  2s freezed on 8 inputs: 1 same, 7 no-op; spent 1s analyzing
+  0s json_serializable on 16 inputs; lib/data/services/mock_water_service.dart
+  9s json_serializable on 16 inputs: 1 no-op; spent 7s analyzing, 2s resolving; lib/data/services/mock_water_service.freezed.dart
+W json_serializable on lib/domain/models/water_system_state.dart:
+  The version constraint "any" on json_annotation allows versions before 4.10.0 which is not allowed.
+W json_serializable on lib/domain/models/water_system_state.dart:
+  The language version (3.0.0) of this package (water_smart_system) does not match the required range `^3.8.0`.
+  
+  Edit pubspec.yaml to include an SDK constraint of at least ^3.8.0.
+  
+  environment:
+    sdk: ^3.8.0
+  
+  11s json_serializable on 16 inputs: 6 skipped, 1 output, 8 no-op; spent 8s analyzing, 2s resolving; test/widget_test.freezed.dart
+  11s json_serializable on 16 inputs: 7 skipped, 1 output, 8 no-op; spent 8s analyzing, 2s resolving
+  0s source_gen:combining_builder on 16 inputs; lib/data/services/mock_water_service.dart
+  0s source_gen:combining_builder on 16 inputs: 7 skipped, 1 output, 8 no-op
+  Built with build_runner/jit in 18s; wrote 3 outputs.

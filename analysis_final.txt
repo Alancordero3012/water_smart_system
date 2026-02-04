@@ -1,0 +1,11 @@
+Analyzing water_smart_system...                                 
+
+  error - Missing concrete implementations of 'getter mixin _$WaterSystemState on Object.bombaActiva', 'getter mixin _$WaterSystemState on Object.caudalActual', 'getter mixin _$WaterSystemState on Object.fuenteActiva', 'getter mixin _$WaterSystemState on Object.presionCalle', and 4 more - lib\domain\models\water_system_state.dart:7:7 - non_abstract_class_inherits_abstract_member
+  error - Target of URI doesn't exist: '../models/water_system_state.dart' - lib\domain\providers.dart:2:8 - uri_does_not_exist
+  error - Target of URI doesn't exist: '../services/smart_rules_service.dart' - lib\domain\providers.dart:3:8 - uri_does_not_exist
+  error - The name 'WaterSystemState' isn't a type, so it can't be used as a type argument - lib\domain\providers.dart:12:50 - non_type_as_type_argument
+  error - The name 'WaterSystemState' isn't a type, so it can't be used as a type argument - lib\domain\providers.dart:28:47 - non_type_as_type_argument
+  error - Undefined name 'smartRulesProvider' - lib\domain\providers.dart:30:33 - undefined_identifier
+  error - The name 'WaterSystemState' isn't a class - lib\domain\providers.dart:34:26 - creation_with_non_type
+  error - The name 'WaterSystemState' isn't a class - lib\domain\providers.dart:35:29 - creation_with_non_type
+
