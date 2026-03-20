@@ -1,0 +1,15 @@
+{
+  "name": "backend_iot",
+  "version": "1.0.0",
+  "description": "IoT Bridge y Simulador para Water Smart System",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "simulate": "node simulador.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "mqtt": "^5.5.0",
+    "mysql2": "^3.9.7"
+  }
+}
