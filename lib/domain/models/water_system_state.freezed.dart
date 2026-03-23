@@ -27,6 +27,7 @@ mixin _$WaterSystemState {
   double get streetPressure => throw _privateConstructorUsedError;
   double get turbidity => throw _privateConstructorUsedError;
   bool get isPumpActive => throw _privateConstructorUsedError;
+  bool get isSolenoidOpen => throw _privateConstructorUsedError;
   String get activeSource => throw _privateConstructorUsedError;
 
   /// Serializes this WaterSystemState to a JSON map.
@@ -53,6 +54,7 @@ abstract class $WaterSystemStateCopyWith<$Res> {
     double streetPressure,
     double turbidity,
     bool isPumpActive,
+    bool isSolenoidOpen,
     String activeSource,
   });
 }
@@ -78,6 +80,7 @@ class _$WaterSystemStateCopyWithImpl<$Res, $Val extends WaterSystemState>
     Object? streetPressure = null,
     Object? turbidity = null,
     Object? isPumpActive = null,
+    Object? isSolenoidOpen = null,
     Object? activeSource = null,
   }) {
     return _then(
@@ -106,6 +109,10 @@ class _$WaterSystemStateCopyWithImpl<$Res, $Val extends WaterSystemState>
                 ? _value.isPumpActive
                 : isPumpActive // ignore: cast_nullable_to_non_nullable
                       as bool,
+            isSolenoidOpen: null == isSolenoidOpen
+                ? _value.isSolenoidOpen
+                : isSolenoidOpen // ignore: cast_nullable_to_non_nullable
+                      as bool,
             activeSource: null == activeSource
                 ? _value.activeSource
                 : activeSource // ignore: cast_nullable_to_non_nullable
@@ -132,6 +139,7 @@ abstract class _$$WaterSystemStateImplCopyWith<$Res>
     double streetPressure,
     double turbidity,
     bool isPumpActive,
+    bool isSolenoidOpen,
     String activeSource,
   });
 }
@@ -156,6 +164,7 @@ class __$$WaterSystemStateImplCopyWithImpl<$Res>
     Object? streetPressure = null,
     Object? turbidity = null,
     Object? isPumpActive = null,
+    Object? isSolenoidOpen = null,
     Object? activeSource = null,
   }) {
     return _then(
@@ -184,6 +193,10 @@ class __$$WaterSystemStateImplCopyWithImpl<$Res>
             ? _value.isPumpActive
             : isPumpActive // ignore: cast_nullable_to_non_nullable
                   as bool,
+        isSolenoidOpen: null == isSolenoidOpen
+            ? _value.isSolenoidOpen
+            : isSolenoidOpen // ignore: cast_nullable_to_non_nullable
+                  as bool,
         activeSource: null == activeSource
             ? _value.activeSource
             : activeSource // ignore: cast_nullable_to_non_nullable
@@ -203,6 +216,7 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
     this.streetPressure = 0.0,
     this.turbidity = 0.0,
     this.isPumpActive = false,
+    this.isSolenoidOpen = false,
     this.activeSource = 'lluvia',
   });
 
@@ -229,11 +243,14 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
   final bool isPumpActive;
   @override
   @JsonKey()
+  final bool isSolenoidOpen;
+  @override
+  @JsonKey()
   final String activeSource;
 
   @override
   String toString() {
-    return 'WaterSystemState(rainTankLevel: $rainTankLevel, streetTankLevel: $streetTankLevel, flowRate: $flowRate, streetPressure: $streetPressure, turbidity: $turbidity, isPumpActive: $isPumpActive, activeSource: $activeSource)';
+    return 'WaterSystemState(rainTankLevel: $rainTankLevel, streetTankLevel: $streetTankLevel, flowRate: $flowRate, streetPressure: $streetPressure, turbidity: $turbidity, isPumpActive: $isPumpActive, isSolenoidOpen: $isSolenoidOpen, activeSource: $activeSource)';
   }
 
   @override
@@ -253,6 +270,8 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
                 other.turbidity == turbidity) &&
             (identical(other.isPumpActive, isPumpActive) ||
                 other.isPumpActive == isPumpActive) &&
+            (identical(other.isSolenoidOpen, isSolenoidOpen) ||
+                other.isSolenoidOpen == isSolenoidOpen) &&
             (identical(other.activeSource, activeSource) ||
                 other.activeSource == activeSource));
   }
@@ -267,6 +286,7 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
     streetPressure,
     turbidity,
     isPumpActive,
+    isSolenoidOpen,
     activeSource,
   );
 
@@ -295,6 +315,7 @@ abstract class _WaterSystemState implements WaterSystemState {
     final double streetPressure,
     final double turbidity,
     final bool isPumpActive,
+    final bool isSolenoidOpen,
     final String activeSource,
   }) = _$WaterSystemStateImpl;
 
@@ -313,6 +334,8 @@ abstract class _WaterSystemState implements WaterSystemState {
   double get turbidity;
   @override
   bool get isPumpActive;
+  @override
+  bool get isSolenoidOpen;
   @override
   String get activeSource;
 

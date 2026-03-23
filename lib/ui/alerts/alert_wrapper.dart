@@ -1,83 +1,130 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/providers.dart';
+import '../../domain/models/water_system_state.dart';
+import '../../domain/models/app_event.dart';
+import '../../domain/event_log_provider.dart';
+import '../shared/app_notifications.dart';
 
+/// Wraps the app tree and monitors sensor state for anomalies.
+/// Fires non-blocking floating toasts and logs events to EventLogNotifier.
+/// No more MaterialBanners.
 class AlertWrapper extends ConsumerWidget {
   final Widget? child;
   const AlertWrapper({super.key, this.child});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.listen(processedSystemStateProvider, (previous, next) {
-      // 1. Low Pressure Alert (Critical)
-      if (next.streetPressure < 10.0 &&
-          (previous == null || previous.streetPressure >= 10.0)) {
-        ScaffoldMessenger.of(context).showMaterialBanner(
-          MaterialBanner(
-            content: const Text(
-              '⚠️  ALERTA CRÍTICA: Baja presión en la red pública detectada!',
-            ),
-            backgroundColor: Colors.redAccent,
-            actions: [
-              TextButton(
-                onPressed: () =>
-                    ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-                child: const Text(
-                  'ENTENDIDO',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
+    ref.listen<WaterSystemState>(processedSystemStateProvider,
+        (previous, next) {
+      if (previous == null) return;
+
+      // ── Pressure alert ────────────────────────────────────────────
+      if (next.streetPressure < 10.0 && previous.streetPressure >= 10.0) {
+        _fire(
+          context, ref,
+          '⚠️  Baja presión detectada: ${next.streetPressure.toStringAsFixed(1)} PSI',
+          EventSeverity.critical,
         );
-      } else if (next.streetPressure >= 10.0 &&
-          previous != null &&
-          previous.streetPressure < 10.0) {
-        ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+      } else if (next.streetPressure < 15.0 && previous.streetPressure >= 15.0) {
+        _fire(
+          context, ref,
+          'Presión por debajo del umbral: ${next.streetPressure.toStringAsFixed(1)} PSI',
+          EventSeverity.warning,
+        );
+      } else if (next.streetPressure >= 10.0 && previous.streetPressure < 10.0) {
+        _fire(
+          context, ref,
+          '✓ Presión normalizada: ${next.streetPressure.toStringAsFixed(1)} PSI',
+          EventSeverity.info,
+        );
       }
 
-      // 2. High Turbidity Alert (Critical)
-      if (next.turbidity > 50.0 &&
-          (previous == null || previous.turbidity <= 50.0)) {
-        ScaffoldMessenger.of(context).showMaterialBanner(
-          MaterialBanner(
-            content: const Text(
-              '⛔  ALERTA DE CALIDAD: Turbidez alta! Entrada de agua bloqueada.',
-            ),
-            backgroundColor: Colors.orange[800],
-            actions: [
-              TextButton(
-                onPressed: () =>
-                    ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-                child: const Text(
-                  'ENTENDIDO',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
-          ),
+      // ── Turbidity alert ───────────────────────────────────────────
+      if (next.turbidity > 50.0 && previous.turbidity <= 50.0) {
+        _fire(
+          context, ref,
+          '⛔  Turbidez crítica: ${next.turbidity.toStringAsFixed(1)} NTU',
+          EventSeverity.critical,
         );
-      } else if (next.turbidity <= 50.0 &&
-          previous != null &&
-          previous.turbidity > 50.0) {
-        ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+      } else if (next.turbidity > 10.0 && previous.turbidity <= 10.0) {
+        _fire(
+          context, ref,
+          '⚠️  Turbidez elevada: ${next.turbidity.toStringAsFixed(1)} NTU',
+          EventSeverity.warning,
+        );
+      } else if (next.turbidity <= 10.0 && previous.turbidity > 10.0) {
+        _fire(
+          context, ref,
+          '✓ Calidad del agua normalizada',
+          EventSeverity.info,
+        );
       }
 
-      // 3. Emergency Mode (Example: Source changed automatically)
-      if (previous != null &&
-          previous.activeSource == 'rain' &&
-          next.activeSource == 'street' &&
+      // ── Tank level alerts ─────────────────────────────────────────
+      if (next.rainTankLevel < 10.0 && previous.rainTankLevel >= 10.0) {
+        _fire(
+          context, ref,
+          '⚠️  Tanque lluvia crítico: ${next.rainTankLevel.toStringAsFixed(1)}%',
+          EventSeverity.critical,
+        );
+      }
+      if (next.streetTankLevel < 10.0 && previous.streetTankLevel >= 10.0) {
+        _fire(
+          context, ref,
+          '⚠️  Tanque calle crítico: ${next.streetTankLevel.toStringAsFixed(1)}%',
+          EventSeverity.critical,
+        );
+      }
+
+      // ── Source auto-switch ────────────────────────────────────────
+      if (previous.activeSource == 'lluvia' &&
+          next.activeSource == 'calle' &&
           next.rainTankLevel < 15.0) {
-        // Assuming 15 is threshold
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('ℹ️ Reserva baja: Cambiando a red pública.'),
-            backgroundColor: Colors.blue,
-          ),
+        _fire(
+          context, ref,
+          'ℹ️  Reserva baja: cambiando a red pública',
+          EventSeverity.info,
+        );
+      }
+
+      // ── Flow stopped (pump on but solenoid closed) ────────────────
+      if (next.isPumpActive && !next.isSolenoidOpen &&
+          next.flowRate == 0 && previous.flowRate > 0) {
+        _fire(
+          context, ref,
+          'Flujo detenido: solenoide cerrada con bomba activa',
+          EventSeverity.warning,
         );
       }
     });
 
     return child ?? const SizedBox();
+  }
+
+  void _fire(
+    BuildContext context,
+    WidgetRef ref,
+    String message,
+    EventSeverity severity,
+  ) {
+    // 1. Log the event
+    ref.read(eventLogProvider.notifier).add(
+          AppEvent(message: message, severity: severity),
+        );
+
+    // 2. Show non-blocking floating toast
+    if (context.mounted) {
+      AppNotifications.show(
+        context,
+        message,
+        type: switch (severity) {
+          EventSeverity.critical => NotificationType.error,
+          EventSeverity.warning  => NotificationType.warning,
+          EventSeverity.info     => NotificationType.info,
+        },
+        duration: const Duration(seconds: 4),
+      );
+    }
   }
 }

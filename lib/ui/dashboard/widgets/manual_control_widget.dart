@@ -1,123 +1,194 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../data/services/mqtt_service.dart';
 import '../../../domain/providers.dart';
-import '../../shared/glass_container.dart';
 
+/// Compact manual control widget with pump, solenoid, and source selector.
 class ManualControlWidget extends ConsumerWidget {
   const ManualControlWidget({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Watch system state to update UI
-    final systemState = ref.watch(processedSystemStateProvider);
-    // Read MQTT service to publish commands
-    final mqttService = ref.read(mqttServiceProvider);
+    final state = ref.watch(processedSystemStateProvider);
+    final repo = ref.read(waterDataRepositoryProvider);
 
-    return GlassContainer(
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A2E),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withAlpha(15)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Control Manual',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Pump Control
-          SwitchListTile(
-            title: const Text(
-              'Bomba Hidráulica',
-              style: TextStyle(color: Colors.white70),
-            ),
-            subtitle: Text(
-              systemState.isPumpActive
-                  ? 'Forzada ENCENDIDA'
-                  : 'Automático / Apagada',
-              style: TextStyle(
-                color: systemState.isPumpActive
-                    ? Colors.greenAccent
-                    : Colors.white38,
+          // Row 1: Pump + Solenoid toggles
+          Row(
+            children: [
+              Expanded(
+                child: _CompactToggle(
+                  label: 'Bomba',
+                  icon: Icons.power_settings_new,
+                  isActive: state.isPumpActive,
+                  onChanged: (v) {
+                    repo.sendCommand('pump', v ? 'ON' : 'OFF');
+                    _showSnack(context, 'Bomba ${v ? "ON" : "OFF"}');
+                  },
+                ),
               ),
-            ),
-            value: systemState.isPumpActive,
-            activeColor: Colors.greenAccent,
-            secondary: const Icon(
-              Icons.power_settings_new,
-              color: Colors.white70,
-            ),
-            onChanged: (value) {
-              mqttService.publishCommand('pump', value ? 'ON' : 'OFF');
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Enviando comando: Bomba ${value ? "ON" : "OFF"}',
-                  ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _CompactToggle(
+                  label: 'Solenoide',
+                  icon: Icons.adjust,
+                  isActive: state.isSolenoidOpen,
+                  activeLabel: 'OPEN',
+                  inactiveLabel: 'CLOSED',
+                  onChanged: (v) {
+                    repo.sendCommand('solenoid', v ? 'OPEN' : 'CLOSED');
+                    _showSnack(context, 'Solenoide ${v ? "OPEN" : "CLOSED"}');
+                  },
                 ),
-              );
-            },
-          ),
-
-          const Divider(color: Colors.white24),
-          const SizedBox(height: 8),
-
-          // Source Control
-          const Text(
-            'Fuente de Agua',
-            style: TextStyle(fontSize: 14, color: Colors.white70),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(
-                  value: 'lluvia',
-                  label: Text('Lluvia'),
-                  icon: Icon(Icons.cloud_queue),
-                ),
-                ButtonSegment(
-                  value: 'calle',
-                  label: Text('Calle'),
-                  icon: Icon(Icons.location_city),
-                ),
-              ],
-              selected: {systemState.activeSource},
-              style: ButtonStyle(
-                visualDensity: VisualDensity.compact,
-                side: WidgetStateProperty.all(
-                  BorderSide(color: Colors.white24),
-                ),
-                foregroundColor: WidgetStateProperty.resolveWith((states) {
-                  if (states.contains(WidgetState.selected))
-                    return Colors.black;
-                  return Colors.white;
-                }),
-                backgroundColor: WidgetStateProperty.resolveWith((states) {
-                  if (states.contains(WidgetState.selected))
-                    return Colors.cyanAccent;
-                  return Colors.transparent;
-                }),
               ),
-              onSelectionChanged: (Set<String> newSelection) {
-                final newValue = newSelection.first;
-                mqttService.publishCommand('source', newValue);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Cambiando fuente a: ${newValue.toUpperCase()}',
+            ],
+          ),
+
+          const SizedBox(height: 14),
+          Container(height: 1, color: Colors.white.withAlpha(10)),
+          const SizedBox(height: 14),
+
+          // Row 2: Source selector
+          Row(
+            children: [
+              Text(
+                'FUENTE',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white.withAlpha(100),
+                  letterSpacing: 1.5,
+                ),
+              ),
+              const Spacer(),
+              SizedBox(
+                height: 36,
+                child: SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(
+                      value: 'lluvia',
+                      label: Text('Lluvia', style: TextStyle(fontSize: 11)),
+                      icon: Icon(Icons.cloud_queue, size: 14),
                     ),
+                    ButtonSegment(
+                      value: 'calle',
+                      label: Text('Calle', style: TextStyle(fontSize: 11)),
+                      icon: Icon(Icons.location_city, size: 14),
+                    ),
+                  ],
+                  selected: {state.activeSource},
+                  style: ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    padding: WidgetStateProperty.all(
+                      const EdgeInsets.symmetric(horizontal: 10),
+                    ),
+                    side: WidgetStateProperty.all(
+                      BorderSide(color: Colors.white.withAlpha(30)),
+                    ),
+                    foregroundColor:
+                        WidgetStateProperty.resolveWith((states) {
+                      if (states.contains(WidgetState.selected)) {
+                        return Colors.black;
+                      }
+                      return Colors.white70;
+                    }),
+                    backgroundColor:
+                        WidgetStateProperty.resolveWith((states) {
+                      if (states.contains(WidgetState.selected)) {
+                        return const Color(0xFF00E5FF);
+                      }
+                      return Colors.transparent;
+                    }),
                   ),
-                );
-              },
-            ),
+                  onSelectionChanged: (Set<String> sel) {
+                    final v = sel.first;
+                    repo.sendCommand('source', v);
+                    _showSnack(context, 'Fuente: ${v.toUpperCase()}');
+                  },
+                ),
+              ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  void _showSnack(BuildContext context, String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, style: const TextStyle(fontSize: 12)),
+        duration: const Duration(seconds: 1),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
+
+/// Compact toggle button for actuators
+class _CompactToggle extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isActive;
+  final String activeLabel;
+  final String inactiveLabel;
+  final ValueChanged<bool> onChanged;
+
+  const _CompactToggle({
+    required this.label,
+    required this.icon,
+    required this.isActive,
+    required this.onChanged,
+    this.activeLabel = 'ON',
+    this.inactiveLabel = 'OFF',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isActive ? Colors.greenAccent : Colors.redAccent;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => onChanged(!isActive),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withAlpha(12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withAlpha(50)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.white.withAlpha(180),
+                ),
+              ),
+            ),
+            Text(
+              isActive ? activeLabel : inactiveLabel,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: color,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -15,6 +15,7 @@ _$WaterSystemStateImpl _$$WaterSystemStateImplFromJson(
   streetPressure: (json['streetPressure'] as num?)?.toDouble() ?? 0.0,
   turbidity: (json['turbidity'] as num?)?.toDouble() ?? 0.0,
   isPumpActive: json['isPumpActive'] as bool? ?? false,
+  isSolenoidOpen: json['isSolenoidOpen'] as bool? ?? false,
   activeSource: json['activeSource'] as String? ?? 'lluvia',
 );
 
@@ -27,5 +28,6 @@ Map<String, dynamic> _$$WaterSystemStateImplToJson(
   'streetPressure': instance.streetPressure,
   'turbidity': instance.turbidity,
   'isPumpActive': instance.isPumpActive,
+  'isSolenoidOpen': instance.isSolenoidOpen,
   'activeSource': instance.activeSource,
 };

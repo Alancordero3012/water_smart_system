@@ -2,203 +2,622 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/providers.dart';
 import '../../domain/models/water_system_state.dart';
-import 'widgets/manual_control_widget.dart';
 import 'widgets/tank_gauge_widget.dart';
-import 'widgets/cost_savings_widget.dart';
-import '../history/history_screen.dart';
-import '../settings/settings_screen.dart';
-import '../shared/glass_container.dart';
+import 'widgets/telemetry_card.dart';
+import 'widgets/sparkline_widget.dart';
+import 'widgets/glow_value.dart';
 
-class DashboardScreen extends ConsumerWidget {
-  const DashboardScreen({super.key});
+/// Immersive dashboard body — lives inside IndexedStack in AppShell.
+/// Layout (top → bottom):
+///   1. Header label
+///   2. Tanks row (fixed 155px)
+///   3. Actuator status bar
+///   4. "SENSORES" label + page dots
+///   5. PageView carousel → EXPANDED (fills all remaining space)
+class DashboardBody extends ConsumerStatefulWidget {
+  const DashboardBody({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Listen to the processed state (rules applied)
-    final systemState = ref.watch(processedSystemStateProvider);
+  ConsumerState<DashboardBody> createState() => _DashboardBodyState();
+}
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Dashboard'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
-            },
+class _DashboardBodyState extends ConsumerState<DashboardBody> {
+  final PageController _pageController = PageController(
+    viewportFraction: 0.92,
+  );
+  int _currentPage = 0;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final asyncState = ref.watch(waterSystemAsyncProvider);
+    final history = ref.watch(sparklineHistoryProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Header ─────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Text(
+            'TELEMETRÍA EN VIVO',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: Colors.white.withAlpha(55),
+              letterSpacing: 2.5,
+            ),
           ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          // Manual refresh logic if needed
-        },
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+        ),
+
+        // ── Tanks ───────────────────────────────────────────────────
+        asyncState.when(
+          loading: () => _skeletonTanks(),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (state) => _buildTanks(state),
+        ),
+
+        const SizedBox(height: 10),
+
+        // ── Actuator status bar ─────────────────────────────────────
+        asyncState.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (state) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _ActuatorStatusBar(state: state),
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        // ── "SENSORES" label + dots ────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
             children: [
-              // 1. Tank Levels Section (Vertical Gauges)
-              const Text(
-                'Niveles de Agua',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Text(
+                'SENSORES',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white.withAlpha(55),
+                  letterSpacing: 2,
+                ),
               ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 200, // Fixed height for gauges
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+              const Spacer(),
+              // Page indicator dots
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: List.generate(3, (i) {
+                  final active = i == _currentPage;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeInOut,
+                    margin: const EdgeInsets.only(left: 5),
+                    width: active ? 16 : 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: active
+                          ? const Color(0xFF00E5FF)
+                          : Colors.white.withAlpha(30),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+
+        // ── EXPANDED Carousel with hover-reveal arrows ──────────────
+        Expanded(
+          child: asyncState.when(
+            loading: () =>
+                const Center(child: CircularProgressIndicator()),
+            error: (_, __) => const SizedBox.shrink(),
+            data: (state) => Stack(
+              children: [
+                // PageView
+                PageView(
+                  controller: _pageController,
+                  physics: const BouncingScrollPhysics(),
+                  onPageChanged: (i) => setState(() => _currentPage = i),
                   children: [
-                    Expanded(
-                      child: TankGaugeWidget(
-                        label: 'Tanque Lluvia',
-                        level: systemState.rainTankLevel,
-                        color: Colors.blueAccent,
-                        icon: Icons.cloud_queue,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: TankGaugeWidget(
-                        label: 'Tanque Calle',
-                        level: systemState.streetTankLevel,
-                        color: Colors.lightBlue,
-                        icon: Icons.location_city,
-                      ),
-                    ),
+                    _card(_buildPressureCard(state, history)),
+                    _card(_buildFlowCard(state, history)),
+                    _card(_buildTurbidityCard(state, history)),
                   ],
                 ),
-              ),
+                // ◀ Prev arrow — left edge, hover-reveal
+                if (_currentPage > 0)
+                  _HoverArrow(
+                    alignment: Alignment.centerLeft,
+                    icon: Icons.chevron_left_rounded,
+                    onTap: () => _pageController.previousPage(
+                      duration: const Duration(milliseconds: 350),
+                      curve: Curves.easeInOutCubic,
+                    ),
+                  ),
+                // ▶ Next arrow — right edge, hover-reveal
+                if (_currentPage < 2)
+                  _HoverArrow(
+                    alignment: Alignment.centerRight,
+                    icon: Icons.chevron_right_rounded,
+                    onTap: () => _pageController.nextPage(
+                      duration: const Duration(milliseconds: 350),
+                      curve: Curves.easeInOutCubic,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
 
-              const SizedBox(height: 24),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
 
-              // 2. Status Section (Clean Cards)
-              const Text(
-                'Estado del Sistema',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              _buildCompactStatus(systemState),
+  // ── Card wrapper ────────────────────────────────────────────────
 
-              const SizedBox(height: 24),
+  Widget _card(Widget child) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: child,
+      );
 
-              // 3. Compact Manual Control
-              const ManualControlWidget(),
-              const SizedBox(height: 16),
-              const CostSavingsWidget(),
+  // ── Sensor cards ────────────────────────────────────────────────
 
-              const SizedBox(height: 24),
-              // Shortcut to Charts
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const HistoryScreen()),
-                  );
-                },
-                icon: const Icon(Icons.show_chart),
-                label: const Text('Ver Historial de Consumo'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+  Widget _buildPressureCard(WaterSystemState s, SparklineHistory h) {
+    final isLow = s.streetPressure < 15;
+    final color = isLow ? Colors.redAccent : const Color(0xFF00E5FF);
+    return TelemetryCard(
+      title: 'PRESIÓN   1 / 3',
+      icon: Icons.speed,
+      color: color,
+      trailing: StatusPill(
+        label: isLow ? 'BAJA' : 'NORMAL',
+        color: isLow ? Colors.redAccent : Colors.greenAccent,
+      ),
+      sparkline: SparklineWidget(
+        data: List.from(h.pressure),
+        color: color,
+      ),
+      valueWidget: GlowValue(
+        rawValue: s.streetPressure,
+        unit: 'PSI',
+        color: color,
+        fontSize: 36,
+      ),
+    );
+  }
+
+  Widget _buildFlowCard(WaterSystemState s, SparklineHistory h) {
+    final isActive = s.flowRate > 0;
+    final color = isActive ? const Color(0xFF00E676) : Colors.grey;
+    return TelemetryCard(
+      title: 'CAUDAL   2 / 3',
+      icon: Icons.waves,
+      color: color,
+      trailing: StatusPill(
+        label: isActive ? 'ACTIVO' : 'PARADO',
+        color: isActive ? Colors.greenAccent : Colors.grey,
+      ),
+      sparkline: SparklineWidget(
+        data: List.from(h.flow),
+        color: color,
+      ),
+      valueWidget: GlowValue(
+        rawValue: s.flowRate,
+        unit: 'L/min',
+        color: color,
+        fontSize: 36,
+      ),
+    );
+  }
+
+  Widget _buildTurbidityCard(WaterSystemState s, SparklineHistory h) {
+    final color = s.turbidity > 50
+        ? Colors.redAccent
+        : s.turbidity > 20
+            ? Colors.orange
+            : const Color(0xFF00E5FF);
+    final label = s.turbidity > 50
+        ? 'TURBIO'
+        : s.turbidity > 20
+            ? 'MODERADO'
+            : 'CRISTALINO';
+    return TelemetryCard(
+      title: 'TURBIDEZ   3 / 3',
+      icon: Icons.opacity,
+      color: color,
+      trailing: StatusPill(label: label, color: color),
+      sparkline: SparklineWidget(
+        data: List.from(h.turbidity),
+        color: color,
+      ),
+      valueWidget: GlowValue(
+        rawValue: s.turbidity,
+        unit: 'NTU',
+        color: color,
+        fontSize: 36,
+      ),
+    );
+  }
+
+  // ── Tanks ────────────────────────────────────────────────────────
+
+  Widget _buildTanks(WaterSystemState state) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: SizedBox(
+          height: 155,
+          child: Row(
+            children: [
+              Expanded(
+                child: AnimatedTankWidget(
+                  label: 'LLUVIA',
+                  level: state.rainTankLevel,
+                  color: const Color(0xFF00B4D8),
+                  icon: Icons.cloud_queue,
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: AnimatedTankWidget(
+                  label: 'CALLE',
+                  level: state.streetTankLevel,
+                  color: const Color(0xFF48CAE4),
+                  icon: Icons.location_city,
+                ),
+              ),
             ],
           ),
         ),
-      ),
-    );
-  }
+      );
 
-  Widget _buildCompactStatus(WaterSystemState state) {
-    return GlassContainer(
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _skeletonTanks() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: SizedBox(
+          height: 155,
+          child: Row(
             children: [
-              _buildStatusItem(
-                icon: state.activeSource == 'lluvia'
-                    ? Icons.water_drop
-                    : Icons.public,
-                label: 'Fuente',
-                value: state.activeSource.toUpperCase(),
-                color: state.activeSource == 'lluvia'
-                    ? Colors.blue
-                    : Colors.orange,
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A2E),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
               ),
-              _buildStatusItem(
-                icon: Icons.speed,
-                label: 'Presión',
-                value: '${state.streetPressure.toStringAsFixed(1)} PSI',
-                color: state.streetPressure < 10
-                    ? Colors.redAccent
-                    : Colors.greenAccent,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A2E),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
               ),
             ],
           ),
-          const Divider(height: 24, color: Colors.white24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildStatusItem(
-                icon: Icons.power,
-                label: 'Bomba',
-                value: state.isPumpActive ? 'ON' : 'OFF',
-                color: state.isPumpActive ? Colors.greenAccent : Colors.grey,
-              ),
-              _buildStatusItem(
-                icon: Icons.opacity,
-                label: 'Turbidez',
-                value: '${state.turbidity.toStringAsFixed(1)} NTU',
-                color: state.turbidity > 50
-                    ? Colors.redAccent
-                    : Colors.cyanAccent,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusItem({
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withAlpha(25),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: color, size: 20),
         ),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      );
+}
+
+// ── Status Bar ────────────────────────────────────────────────────
+
+class _ActuatorStatusBar extends StatelessWidget {
+  final WaterSystemState state;
+  const _ActuatorStatusBar({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final systemActive = state.isPumpActive && state.isSolenoidOpen;
+    final systemLabel = systemActive
+        ? 'SISTEMA ACTIVO'
+        : state.isPumpActive
+            ? 'PRESURIZADO'
+            : 'EN ESPERA';
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          // Refined glass look — slightly lighter than background
+          color: Colors.white.withAlpha(10),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white.withAlpha(14), width: 1),
+        ),
+        child: Row(
           children: [
-            Text(
-              label,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            // ── LED Pills ──────────────────────────────────────────
+            _LedPill(
+              icon: Icons.power_settings_new,
+              label: 'Bomba',
+              isActive: state.isPumpActive,
+              activeColor: const Color(0xFF00E676),
             ),
-            Text(
-              value,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                color: color,
-              ),
+            const SizedBox(width: 10),
+            _LedPill(
+              icon: Icons.adjust,
+              label: 'Solenoide',
+              isActive: state.isSolenoidOpen,
+              activeColor: const Color(0xFF00E5FF),
+            ),
+
+            const Spacer(),
+
+            // ── Master status capsule ──────────────────────────────
+            _SystemCapsule(
+              isActive: systemActive,
+              label: systemLabel,
             ),
           ],
         ),
-      ],
+      ),
+    );
+  }
+}
+
+// ── LED Pill ───────────────────────────────────────────────────────
+
+class _LedPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isActive;
+  final Color activeColor;
+
+  const _LedPill({
+    required this.icon,
+    required this.label,
+    required this.isActive,
+    required this.activeColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isActive ? activeColor : Colors.white24;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isActive ? color.withAlpha(15) : Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withAlpha(isActive ? 55 : 25), width: 1),
+        boxShadow: isActive
+            ? [BoxShadow(color: color.withAlpha(35), blurRadius: 10, spreadRadius: 0)]
+            : null,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // LED dot
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              boxShadow: isActive
+                  ? [BoxShadow(color: color.withAlpha(150), blurRadius: 6)]
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 7),
+          // Icon
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 5),
+          // Label
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: isActive ? Colors.white.withAlpha(200) : Colors.white38,
+            ),
+          ),
+          const SizedBox(width: 6),
+          // State badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: color.withAlpha(isActive ? 30 : 15),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              isActive ? 'ON' : 'OFF',
+              style: TextStyle(
+                fontSize: 8,
+                fontWeight: FontWeight.w800,
+                color: color,
+                fontFamily: 'monospace',
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Pulsing system capsule ─────────────────────────────────────────
+
+class _SystemCapsule extends StatefulWidget {
+  final bool isActive;
+  final String label;
+
+  const _SystemCapsule({required this.isActive, required this.label});
+
+  @override
+  State<_SystemCapsule> createState() => _SystemCapsuleState();
+}
+
+class _SystemCapsuleState extends State<_SystemCapsule>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pulse;
+  late Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..repeat(reverse: true);
+    _anim = Tween<double>(begin: 0.45, end: 1.0).animate(
+      CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.isActive
+        ? const Color(0xFF00E676)
+        : const Color(0xFF6B2323); // desaturated red when offline/idle
+
+    final textColor = widget.isActive ? Colors.white : Colors.white54;
+
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (_, __) {
+        // Only pulse when active
+        final opacity = widget.isActive ? _anim.value : 0.7;
+        return Opacity(
+          opacity: opacity,
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: color.withAlpha(widget.isActive ? 18 : 12),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: color.withAlpha(widget.isActive ? 60 : 30),
+                width: 1,
+              ),
+              boxShadow: widget.isActive
+                  ? [BoxShadow(color: color.withAlpha(30), blurRadius: 12)]
+                  : null,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Pulse dot
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                    boxShadow: widget.isActive
+                        ? [BoxShadow(color: color.withAlpha(160), blurRadius: 6)]
+                        : null,
+                  ),
+                ),
+                const SizedBox(width: 7),
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: textColor,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Hover-reveal navigation arrow for the carousel.
+/// Fades in when the mouse enters, fades out when it leaves.
+/// Always subtly visible (opacity 0.25) on touch devices for tap accessibility.
+class _HoverArrow extends StatefulWidget {
+  final Alignment alignment;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _HoverArrow({
+    required this.alignment,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  State<_HoverArrow> createState() => _HoverArrowState();
+}
+
+class _HoverArrowState extends State<_HoverArrow> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isLeft = widget.alignment == Alignment.centerLeft;
+
+    return Positioned.fill(
+      child: Align(
+        alignment: widget.alignment,
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: widget.onTap,
+            child: AnimatedOpacity(
+              opacity: _hovered ? 1.0 : 0.25,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeInOut,
+              child: Container(
+                width: 44,
+                height: 44,
+                margin: EdgeInsets.only(
+                  left: isLeft ? 10 : 0,
+                  right: isLeft ? 0 : 10,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A2E),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFF00E5FF).withAlpha(60),
+                    width: 1,
+                  ),
+                  boxShadow: _hovered
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFF00E5FF).withAlpha(30),
+                            blurRadius: 12,
+                          )
+                        ]
+                      : null,
+                ),
+                child: Icon(
+                  widget.icon,
+                  size: 22,
+                  color: const Color(0xFF00E5FF).withAlpha(_hovered ? 230 : 140),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

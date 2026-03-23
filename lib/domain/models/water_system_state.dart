@@ -12,6 +12,7 @@ class WaterSystemState with _$WaterSystemState {
     @Default(0.0) double streetPressure,
     @Default(0.0) double turbidity,
     @Default(false) bool isPumpActive,
+    @Default(false) bool isSolenoidOpen,
     @Default('lluvia') String activeSource,
   }) = _WaterSystemState;
 

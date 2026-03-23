@@ -24,18 +24,25 @@ class AppTheme {
         error: alertRed,
         onSurface: Colors.white,
       ),
-      // Modern Typography (Fallback to standard if GoogleFonts fails)
-      /*
-      textTheme: GoogleFonts.interTextTheme(base.textTheme).copyWith(
-        displayLarge: GoogleFonts.inter(
+      // Typography — Usando textTheme del sistema con ajustes
+      // Para habilitar Google Fonts, descomenta la dependencia y las líneas:
+      // textTheme: GoogleFonts.interTextTheme(base.textTheme),
+      textTheme: base.textTheme.copyWith(
+        displayLarge: const TextStyle(
             fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
-        displayMedium: GoogleFonts.inter(
+        displayMedium: const TextStyle(
             fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
-        bodyLarge: GoogleFonts.inter(fontSize: 16, color: Colors.white70),
-        bodyMedium: GoogleFonts.inter(fontSize: 14, color: Colors.white60),
+        bodyLarge: const TextStyle(fontSize: 16, color: Colors.white70),
+        bodyMedium: const TextStyle(fontSize: 14, color: Colors.white60),
       ),
-      */
-      // Removed CardTheme to avoid type conflicts in this environment
+      // Cards
+      cardTheme: CardThemeData(
+        color: surface,
+        elevation: 4,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
       // AppBar
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
@@ -47,6 +54,18 @@ class AppTheme {
           letterSpacing: 1.2,
           color: Colors.white,
         ),
+      ),
+      // Dividers
+      dividerTheme: const DividerThemeData(
+        color: Colors.white12,
+        thickness: 1,
+      ),
+      // Snackbar
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: surface,
+        contentTextStyle: const TextStyle(color: Colors.white),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
