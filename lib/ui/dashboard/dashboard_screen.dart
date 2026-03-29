@@ -2,18 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/providers.dart';
 import '../../domain/models/water_system_state.dart';
+import '../../data/services/bridge_health_service.dart';
 import 'widgets/tank_gauge_widget.dart';
 import 'widgets/telemetry_card.dart';
 import 'widgets/sparkline_widget.dart';
 import 'widgets/glow_value.dart';
 
 /// Immersive dashboard body — lives inside IndexedStack in AppShell.
-/// Layout (top → bottom):
-///   1. Header label
-///   2. Tanks row (fixed 155px)
-///   3. Actuator status bar
-///   4. "SENSORES" label + page dots
-///   5. PageView carousel → EXPANDED (fills all remaining space)
 class DashboardBody extends ConsumerStatefulWidget {
   const DashboardBody({super.key});
 
@@ -22,9 +17,7 @@ class DashboardBody extends ConsumerStatefulWidget {
 }
 
 class _DashboardBodyState extends ConsumerState<DashboardBody> {
-  final PageController _pageController = PageController(
-    viewportFraction: 0.92,
-  );
+  final PageController _pageController = PageController(viewportFraction: 0.92);
   int _currentPage = 0;
 
   @override
@@ -37,13 +30,14 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
   Widget build(BuildContext context) {
     final asyncState = ref.watch(waterSystemAsyncProvider);
     final history = ref.watch(sparklineHistoryProvider);
+    final isSimulation = ref.watch(useSimulationProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ── Header ─────────────────────────────────────────────────
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
           child: Text(
             'TELEMETRÍA EN VIVO',
             style: TextStyle(
@@ -54,6 +48,11 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
             ),
           ),
         ),
+
+        // ── Bridge Status Banner (simulation mode only) ─────────────
+        if (isSimulation) const _BridgeStatusBanner(),
+
+        const SizedBox(height: 6),
 
         // ── Tanks ───────────────────────────────────────────────────
         asyncState.when(
@@ -91,7 +90,6 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
                 ),
               ),
               const Spacer(),
-              // Page indicator dots
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: List.generate(3, (i) {
@@ -116,15 +114,14 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
         ),
         const SizedBox(height: 6),
 
-        // ── EXPANDED Carousel with hover-reveal arrows ──────────────
+        // ── EXPANDED Carousel ──────────────────────────────────────
         Expanded(
           child: asyncState.when(
             loading: () =>
                 const Center(child: CircularProgressIndicator()),
-            error: (_, __) => const SizedBox.shrink(),
+            error: (err, __) => _buildBridgeErrorState(err.toString()),
             data: (state) => Stack(
               children: [
-                // PageView
                 PageView(
                   controller: _pageController,
                   physics: const BouncingScrollPhysics(),
@@ -135,7 +132,6 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
                     _card(_buildTurbidityCard(state, history)),
                   ],
                 ),
-                // ◀ Prev arrow — left edge, hover-reveal
                 if (_currentPage > 0)
                   _HoverArrow(
                     alignment: Alignment.centerLeft,
@@ -145,7 +141,6 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
                       curve: Curves.easeInOutCubic,
                     ),
                   ),
-                // ▶ Next arrow — right edge, hover-reveal
                 if (_currentPage < 2)
                   _HoverArrow(
                     alignment: Alignment.centerRight,
@@ -165,14 +160,43 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
     );
   }
 
-  // ── Card wrapper ────────────────────────────────────────────────
+  Widget _buildBridgeErrorState(String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off, color: Colors.redAccent, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextButton.icon(
+              onPressed: () =>
+                  ref.read(bridgeHealthProvider.notifier).refresh(),
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('Reintentar'),
+              style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF00E5FF)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _card(Widget child) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6),
         child: child,
       );
-
-  // ── Sensor cards ────────────────────────────────────────────────
 
   Widget _buildPressureCard(WaterSystemState s, SparklineHistory h) {
     final isLow = s.streetPressure < 15;
@@ -185,16 +209,9 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
         label: isLow ? 'BAJA' : 'NORMAL',
         color: isLow ? Colors.redAccent : Colors.greenAccent,
       ),
-      sparkline: SparklineWidget(
-        data: List.from(h.pressure),
-        color: color,
-      ),
+      sparkline: SparklineWidget(data: List.from(h.pressure), color: color),
       valueWidget: GlowValue(
-        rawValue: s.streetPressure,
-        unit: 'PSI',
-        color: color,
-        fontSize: 36,
-      ),
+          rawValue: s.streetPressure, unit: 'PSI', color: color, fontSize: 36),
     );
   }
 
@@ -209,16 +226,9 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
         label: isActive ? 'ACTIVO' : 'PARADO',
         color: isActive ? Colors.greenAccent : Colors.grey,
       ),
-      sparkline: SparklineWidget(
-        data: List.from(h.flow),
-        color: color,
-      ),
+      sparkline: SparklineWidget(data: List.from(h.flow), color: color),
       valueWidget: GlowValue(
-        rawValue: s.flowRate,
-        unit: 'L/min',
-        color: color,
-        fontSize: 36,
-      ),
+          rawValue: s.flowRate, unit: 'L/min', color: color, fontSize: 36),
     );
   }
 
@@ -238,20 +248,11 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
       icon: Icons.opacity,
       color: color,
       trailing: StatusPill(label: label, color: color),
-      sparkline: SparklineWidget(
-        data: List.from(h.turbidity),
-        color: color,
-      ),
+      sparkline: SparklineWidget(data: List.from(h.turbidity), color: color),
       valueWidget: GlowValue(
-        rawValue: s.turbidity,
-        unit: 'NTU',
-        color: color,
-        fontSize: 36,
-      ),
+          rawValue: s.turbidity, unit: 'NTU', color: color, fontSize: 36),
     );
   }
-
-  // ── Tanks ────────────────────────────────────────────────────────
 
   Widget _buildTanks(WaterSystemState state) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -310,6 +311,111 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
       );
 }
 
+// ── Bridge Status Banner ──────────────────────────────────────────────────────
+
+class _BridgeStatusBanner extends ConsumerWidget {
+  const _BridgeStatusBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final health = ref.watch(bridgeHealthProvider);
+
+    // ── Web mode: neutral grey info pill ─────────────────────────────
+    if (health.status == BridgeStatus.webMode) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: Colors.white.withAlpha(80),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Modo Web — MQTT directo (bridge local no disponible)',
+              style: TextStyle(
+                fontSize: 10,
+                color: Colors.white.withAlpha(100),
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ── Desktop: green (ok) or red (error) animated container ────────
+    final isOk = health.status == BridgeStatus.ok;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 400),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isOk
+            ? const Color(0xFF00E676).withAlpha(14)
+            : Colors.redAccent.withAlpha(18),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isOk
+              ? const Color(0xFF00E676).withAlpha(50)
+              : Colors.redAccent.withAlpha(60),
+          width: 1,
+        ),
+      ),
+      child: isOk
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF00E676),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Servicios de Fondo: ACTIVOS'
+                  '${health.mqttStatus == "connected" ? "  •  MQTT ✓" : ""}'
+                  '${health.dbStatus == "ready" ? "  •  DB ✓" : ""}',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Color(0xFF00E676),
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.redAccent, size: 14),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    health.errorMessage ??
+                        "Bridge no detectado. Corre 'node index.js' en tu terminal",
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Colors.redAccent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
 // ── Status Bar ────────────────────────────────────────────────────
 
 class _ActuatorStatusBar extends StatelessWidget {
@@ -330,14 +436,12 @@ class _ActuatorStatusBar extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          // Refined glass look — slightly lighter than background
           color: Colors.white.withAlpha(10),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: Colors.white.withAlpha(14), width: 1),
         ),
         child: Row(
           children: [
-            // ── LED Pills ──────────────────────────────────────────
             _LedPill(
               icon: Icons.power_settings_new,
               label: 'Bomba',
@@ -351,14 +455,8 @@ class _ActuatorStatusBar extends StatelessWidget {
               isActive: state.isSolenoidOpen,
               activeColor: const Color(0xFF00E5FF),
             ),
-
             const Spacer(),
-
-            // ── Master status capsule ──────────────────────────────
-            _SystemCapsule(
-              isActive: systemActive,
-              label: systemLabel,
-            ),
+            _SystemCapsule(isActive: systemActive, label: systemLabel),
           ],
         ),
       ),
@@ -393,13 +491,12 @@ class _LedPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withAlpha(isActive ? 55 : 25), width: 1),
         boxShadow: isActive
-            ? [BoxShadow(color: color.withAlpha(35), blurRadius: 10, spreadRadius: 0)]
+            ? [BoxShadow(color: color.withAlpha(35), blurRadius: 10)]
             : null,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // LED dot
           Container(
             width: 7,
             height: 7,
@@ -412,10 +509,8 @@ class _LedPill extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 7),
-          // Icon
           Icon(icon, size: 12, color: color),
           const SizedBox(width: 5),
-          // Label
           Text(
             label,
             style: TextStyle(
@@ -425,7 +520,6 @@ class _LedPill extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 6),
-          // State badge
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
             decoration: BoxDecoration(
@@ -454,7 +548,6 @@ class _LedPill extends StatelessWidget {
 class _SystemCapsule extends StatefulWidget {
   final bool isActive;
   final String label;
-
   const _SystemCapsule({required this.isActive, required this.label});
 
   @override
@@ -486,22 +579,18 @@ class _SystemCapsuleState extends State<_SystemCapsule>
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.isActive
-        ? const Color(0xFF00E676)
-        : const Color(0xFF6B2323); // desaturated red when offline/idle
-
+    final color =
+        widget.isActive ? const Color(0xFF00E676) : const Color(0xFF6B2323);
     final textColor = widget.isActive ? Colors.white : Colors.white54;
 
     return AnimatedBuilder(
       animation: _anim,
       builder: (_, __) {
-        // Only pulse when active
         final opacity = widget.isActive ? _anim.value : 0.7;
         return Opacity(
           opacity: opacity,
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: color.withAlpha(widget.isActive ? 18 : 12),
               borderRadius: BorderRadius.circular(20),
@@ -516,7 +605,6 @@ class _SystemCapsuleState extends State<_SystemCapsule>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Pulse dot
                 Container(
                   width: 6,
                   height: 6,
@@ -547,9 +635,8 @@ class _SystemCapsuleState extends State<_SystemCapsule>
   }
 }
 
-/// Hover-reveal navigation arrow for the carousel.
-/// Fades in when the mouse enters, fades out when it leaves.
-/// Always subtly visible (opacity 0.25) on touch devices for tap accessibility.
+// ── Hover-reveal navigation arrow ─────────────────────────────────
+
 class _HoverArrow extends StatefulWidget {
   final Alignment alignment;
   final IconData icon;
@@ -611,7 +698,8 @@ class _HoverArrowState extends State<_HoverArrow> {
                 child: Icon(
                   widget.icon,
                   size: 22,
-                  color: const Color(0xFF00E5FF).withAlpha(_hovered ? 230 : 140),
+                  color: const Color(0xFF00E5FF)
+                      .withAlpha(_hovered ? 230 : 140),
                 ),
               ),
             ),

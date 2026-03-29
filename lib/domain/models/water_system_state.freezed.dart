@@ -30,6 +30,11 @@ mixin _$WaterSystemState {
   bool get isSolenoidOpen => throw _privateConstructorUsedError;
   String get activeSource => throw _privateConstructorUsedError;
 
+  /// True only when this state update was triggered by a message on
+  /// `agua_iot/notificaciones` (published by the Node.js bridge after
+  /// its own threshold checks). Reset to false on every regular sensor update.
+  bool get fromBridgeNotification => throw _privateConstructorUsedError;
+
   /// Serializes this WaterSystemState to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
@@ -56,6 +61,7 @@ abstract class $WaterSystemStateCopyWith<$Res> {
     bool isPumpActive,
     bool isSolenoidOpen,
     String activeSource,
+    bool fromBridgeNotification,
   });
 }
 
@@ -82,6 +88,7 @@ class _$WaterSystemStateCopyWithImpl<$Res, $Val extends WaterSystemState>
     Object? isPumpActive = null,
     Object? isSolenoidOpen = null,
     Object? activeSource = null,
+    Object? fromBridgeNotification = null,
   }) {
     return _then(
       _value.copyWith(
@@ -117,6 +124,10 @@ class _$WaterSystemStateCopyWithImpl<$Res, $Val extends WaterSystemState>
                 ? _value.activeSource
                 : activeSource // ignore: cast_nullable_to_non_nullable
                       as String,
+            fromBridgeNotification: null == fromBridgeNotification
+                ? _value.fromBridgeNotification
+                : fromBridgeNotification // ignore: cast_nullable_to_non_nullable
+                      as bool,
           )
           as $Val,
     );
@@ -141,6 +152,7 @@ abstract class _$$WaterSystemStateImplCopyWith<$Res>
     bool isPumpActive,
     bool isSolenoidOpen,
     String activeSource,
+    bool fromBridgeNotification,
   });
 }
 
@@ -166,6 +178,7 @@ class __$$WaterSystemStateImplCopyWithImpl<$Res>
     Object? isPumpActive = null,
     Object? isSolenoidOpen = null,
     Object? activeSource = null,
+    Object? fromBridgeNotification = null,
   }) {
     return _then(
       _$WaterSystemStateImpl(
@@ -201,6 +214,10 @@ class __$$WaterSystemStateImplCopyWithImpl<$Res>
             ? _value.activeSource
             : activeSource // ignore: cast_nullable_to_non_nullable
                   as String,
+        fromBridgeNotification: null == fromBridgeNotification
+            ? _value.fromBridgeNotification
+            : fromBridgeNotification // ignore: cast_nullable_to_non_nullable
+                  as bool,
       ),
     );
   }
@@ -218,6 +235,7 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
     this.isPumpActive = false,
     this.isSolenoidOpen = false,
     this.activeSource = 'lluvia',
+    this.fromBridgeNotification = false,
   });
 
   factory _$WaterSystemStateImpl.fromJson(Map<String, dynamic> json) =>
@@ -248,9 +266,16 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
   @JsonKey()
   final String activeSource;
 
+  /// True only when this state update was triggered by a message on
+  /// `agua_iot/notificaciones` (published by the Node.js bridge after
+  /// its own threshold checks). Reset to false on every regular sensor update.
+  @override
+  @JsonKey()
+  final bool fromBridgeNotification;
+
   @override
   String toString() {
-    return 'WaterSystemState(rainTankLevel: $rainTankLevel, streetTankLevel: $streetTankLevel, flowRate: $flowRate, streetPressure: $streetPressure, turbidity: $turbidity, isPumpActive: $isPumpActive, isSolenoidOpen: $isSolenoidOpen, activeSource: $activeSource)';
+    return 'WaterSystemState(rainTankLevel: $rainTankLevel, streetTankLevel: $streetTankLevel, flowRate: $flowRate, streetPressure: $streetPressure, turbidity: $turbidity, isPumpActive: $isPumpActive, isSolenoidOpen: $isSolenoidOpen, activeSource: $activeSource, fromBridgeNotification: $fromBridgeNotification)';
   }
 
   @override
@@ -273,7 +298,9 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
             (identical(other.isSolenoidOpen, isSolenoidOpen) ||
                 other.isSolenoidOpen == isSolenoidOpen) &&
             (identical(other.activeSource, activeSource) ||
-                other.activeSource == activeSource));
+                other.activeSource == activeSource) &&
+            (identical(other.fromBridgeNotification, fromBridgeNotification) ||
+                other.fromBridgeNotification == fromBridgeNotification));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -288,6 +315,7 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
     isPumpActive,
     isSolenoidOpen,
     activeSource,
+    fromBridgeNotification,
   );
 
   /// Create a copy of WaterSystemState
@@ -317,6 +345,7 @@ abstract class _WaterSystemState implements WaterSystemState {
     final bool isPumpActive,
     final bool isSolenoidOpen,
     final String activeSource,
+    final bool fromBridgeNotification,
   }) = _$WaterSystemStateImpl;
 
   factory _WaterSystemState.fromJson(Map<String, dynamic> json) =
@@ -338,6 +367,12 @@ abstract class _WaterSystemState implements WaterSystemState {
   bool get isSolenoidOpen;
   @override
   String get activeSource;
+
+  /// True only when this state update was triggered by a message on
+  /// `agua_iot/notificaciones` (published by the Node.js bridge after
+  /// its own threshold checks). Reset to false on every regular sensor update.
+  @override
+  bool get fromBridgeNotification;
 
   /// Create a copy of WaterSystemState
   /// with the given fields replaced by the non-null parameter values.

@@ -4,6 +4,10 @@ const mysql = require('mysql2/promise');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { WebSocketServer } = require('ws');
+
+// Connected Flutter Web clients
+const wsClients = new Set();
 
 // --- Configuración de Base de Datos (Aiven MySQL) ---
 const dbConfig = {
@@ -124,6 +128,28 @@ client.on('message', async (topic, message) => {
             console.warn(`⚠️ DB no está lista. Mensaje de ${topic} ignorado.`);
         }
 
+        // --- Forward to Flutter Web clients ---
+        wsClients.forEach(ws => {
+            if (ws.readyState === 1) { // WebSocket.OPEN
+                ws.send(JSON.stringify({ topic, value: valor }));
+            }
+        });
+
+        // --- Evaluación de umbrales y notificaciones ---
+        // Publica a agua_iot/notificaciones cuando se detecta un valor crítico.
+        // Flutter escucha este tópico para disparar alertas verificadas por el bridge.
+        if (topic === 'agua_iot/calidad/turbidez' && valor > 50) {
+            const notif = JSON.stringify({ type: 'turbidez_critica', value: valor });
+            client.publish('agua_iot/notificaciones', notif, { qos: 1 });
+            console.log(`🔔 Notificación enviada → turbidez_critica: ${valor} NTU`);
+        }
+
+        if (topic === 'agua_iot/sensores_presion/1' && valor < 10) {
+            const notif = JSON.stringify({ type: 'baja_presion', value: valor });
+            client.publish('agua_iot/notificaciones', notif, { qos: 1 });
+            console.log(`🔔 Notificación enviada → baja_presion: ${valor} PSI`);
+        }
+
     } catch (error) {
         console.error('❌ Error procesando mensaje MQTT:', error);
     }
@@ -189,7 +215,54 @@ const server = http.createServer(async (req, res) => {
 server.listen(API_PORT, () => {
     console.log(`📊 API HTTP disponible en http://localhost:${API_PORT}/api/lecturas`);
     console.log(`❤️ Health check en http://localhost:${API_PORT}/api/health`);
+    console.log(`🔌 WebSocket local en ws://localhost:${API_PORT}`);
 });
+
+// --- WebSocket Server (Flutter Web bridge) ---
+const wss = new WebSocketServer({ server });
+
+wss.on('connection', (ws, req) => {
+    wsClients.add(ws);
+    console.log(`\uD83D\uDD0C Flutter Web conectado via WS (${wsClients.size} cliente(s))`);
+
+    // Send connection confirmation
+    ws.send(JSON.stringify({ type: 'connected', message: 'Bridge WS OK' }));
+
+    // Handle actuator commands from Flutter Web
+    // Expected format: { "command": "bomba" | "solenoide", "value": "1" | "0" }
+    ws.on('message', (data) => {
+        try {
+            const msg = JSON.parse(data.toString());
+            if (msg.command && msg.value !== undefined) {
+                const topicMap = {
+                    'bomba':     'agua_iot/actuadores/bomba',
+                    'solenoide': 'agua_iot/actuadores/solenoide',
+                };
+                const topic = topicMap[msg.command];
+                if (topic) {
+                    console.log(`\uD83D\uDD27 Comando desde Flutter Web: ${topic} = ${msg.value}`);
+                    client.publish(topic, String(msg.value), { qos: 1, retain: true });
+                } else {
+                    console.warn(`\u26A0\uFE0F Comando desconocido: ${msg.command}`);
+                }
+            }
+        } catch (e) {
+            console.error('\u26A0\uFE0F Error parseando mensaje WS:', e.message);
+        }
+    });
+
+    ws.on('close', () => {
+        wsClients.delete(ws);
+        console.log(`\uD83D\uDD0C Flutter Web desconectado (${wsClients.size} cliente(s))`);
+    });
+
+    ws.on('error', (err) => {
+        console.error('\u26A0\uFE0F WS error:', err.message);
+        wsClients.delete(ws);
+    });
+});
+
+
 
 
 // Manejo de cierres limpios

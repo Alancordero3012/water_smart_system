@@ -6,10 +6,19 @@ import 'ui/shell/app_shell.dart';
 import 'ui/alerts/alert_wrapper.dart';
 import 'ui/theme/app_theme.dart';
 
+/// Entry point — lightweight, no process spawning.
+///
+/// The backend (index.js + simulador.js) must be started manually before
+/// launching the app:
+///   cd backend_iot
+///   node index.js        # Terminal 1
+///   node simulador.js    # Terminal 2
+///
+/// The app connects to HiveMQ Cloud immediately on startup and waits for
+/// MQTT data. The Bridge Health banner in the dashboard shows connection status.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
-
   runApp(
     ProviderScope(
       overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],

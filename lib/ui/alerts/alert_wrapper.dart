@@ -8,10 +8,15 @@ import '../shared/app_notifications.dart';
 
 /// Wraps the app tree and monitors sensor state for anomalies.
 /// Fires non-blocking floating toasts and logs events to EventLogNotifier.
-/// No more MaterialBanners.
+///
+/// Alert gating policy:
+///   - CRITICAL alerts (Turbidez Crítica, Baja Presión) require
+///     `fromBridgeNotification == true` — they are only fired when the
+///     Node.js bridge itself republishes the alert via `agua_iot/notificaciones`.
+///   - WARNING / INFO alerts remain threshold-based.
 class AlertWrapper extends ConsumerWidget {
   final Widget? child;
-  const AlertWrapper({super.key, this.child});
+  const AlertWrapper({super.key, required this.child});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -19,14 +24,27 @@ class AlertWrapper extends ConsumerWidget {
         (previous, next) {
       if (previous == null) return;
 
-      // ── Pressure alert ────────────────────────────────────────────
-      if (next.streetPressure < 10.0 && previous.streetPressure >= 10.0) {
-        _fire(
-          context, ref,
-          '⚠️  Baja presión detectada: ${next.streetPressure.toStringAsFixed(1)} PSI',
-          EventSeverity.critical,
-        );
-      } else if (next.streetPressure < 15.0 && previous.streetPressure >= 15.0) {
+      // ── Critical alerts — gated on bridge notification ─────────────
+      if (next.fromBridgeNotification) {
+        if (next.streetPressure < 10.0 && previous.streetPressure >= 10.0) {
+          _fire(
+            context, ref,
+            '⚠️  Baja presión detectada: ${next.streetPressure.toStringAsFixed(1)} PSI',
+            EventSeverity.critical,
+          );
+        }
+        if (next.turbidity > 50.0 && previous.turbidity <= 50.0) {
+          _fire(
+            context, ref,
+            '⛔  Turbidez crítica: ${next.turbidity.toStringAsFixed(1)} NTU',
+            EventSeverity.critical,
+          );
+        }
+        return; // Skip threshold-based logic for bridge-notification events
+      }
+
+      // ── Pressure warning (threshold-based) ───────────────────────────
+      if (next.streetPressure < 15.0 && previous.streetPressure >= 15.0) {
         _fire(
           context, ref,
           'Presión por debajo del umbral: ${next.streetPressure.toStringAsFixed(1)} PSI',
@@ -40,14 +58,8 @@ class AlertWrapper extends ConsumerWidget {
         );
       }
 
-      // ── Turbidity alert ───────────────────────────────────────────
-      if (next.turbidity > 50.0 && previous.turbidity <= 50.0) {
-        _fire(
-          context, ref,
-          '⛔  Turbidez crítica: ${next.turbidity.toStringAsFixed(1)} NTU',
-          EventSeverity.critical,
-        );
-      } else if (next.turbidity > 10.0 && previous.turbidity <= 10.0) {
+      // ── Turbidity warning (threshold-based) ──────────────────────────
+      if (next.turbidity > 10.0 && previous.turbidity <= 10.0) {
         _fire(
           context, ref,
           '⚠️  Turbidez elevada: ${next.turbidity.toStringAsFixed(1)} NTU',
@@ -61,7 +73,7 @@ class AlertWrapper extends ConsumerWidget {
         );
       }
 
-      // ── Tank level alerts ─────────────────────────────────────────
+      // ── Tank level alerts ─────────────────────────────────────────────
       if (next.rainTankLevel < 10.0 && previous.rainTankLevel >= 10.0) {
         _fire(
           context, ref,
@@ -77,7 +89,7 @@ class AlertWrapper extends ConsumerWidget {
         );
       }
 
-      // ── Source auto-switch ────────────────────────────────────────
+      // ── Source auto-switch ────────────────────────────────────────────
       if (previous.activeSource == 'lluvia' &&
           next.activeSource == 'calle' &&
           next.rainTankLevel < 15.0) {
@@ -88,7 +100,7 @@ class AlertWrapper extends ConsumerWidget {
         );
       }
 
-      // ── Flow stopped (pump on but solenoid closed) ────────────────
+      // ── Flow stopped (pump on but solenoid closed) ────────────────────
       if (next.isPumpActive && !next.isSolenoidOpen &&
           next.flowRate == 0 && previous.flowRate > 0) {
         _fire(

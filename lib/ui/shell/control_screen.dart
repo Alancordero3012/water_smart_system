@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/providers.dart';
+import '../../domain/actuator_notifier.dart';
 import '../dashboard/widgets/glow_value.dart';
 import '../shared/app_notifications.dart';
 
-/// Full Control tab — actuator switches, source selector, live metrics.
+/// Full Control tab — Fuente 1 / Fuente 2 switches (MQTT-confirmed), source
+/// selector, and live telemetry metrics.
 class ControlScreen extends ConsumerWidget {
   const ControlScreen({super.key});
 
@@ -18,51 +20,15 @@ class ControlScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SectionHeader(title: 'ACTUADORES', icon: Icons.power),
+          _SectionHeader(title: 'CONTROL DE FUENTES', icon: Icons.power),
           const SizedBox(height: 10),
 
-          // Actuator cards
-          Row(
+          // ── Fuente 1 + Fuente 2 cards ─────────────────────────────────
+          const Row(
             children: [
-              Expanded(
-                child: _ActuatorCard(
-                  label: 'Bomba',
-                  subtitle: state.isPumpActive ? 'ENCENDIDA' : 'APAGADA',
-                  icon: Icons.power_settings_new,
-                  isActive: state.isPumpActive,
-                  activeColor: const Color(0xFF00E676),
-                  onChanged: (v) {
-                    repo.sendCommand('pump', v ? 'ON' : 'OFF');
-                    AppNotifications.show(
-                      context,
-                      'Bomba ${v ? "encendida" : "apagada"}',
-                      type: v
-                          ? NotificationType.success
-                          : NotificationType.warning,
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _ActuatorCard(
-                  label: 'Solenoide',
-                  subtitle: state.isSolenoidOpen ? 'ABIERTA' : 'CERRADA',
-                  icon: Icons.adjust,
-                  isActive: state.isSolenoidOpen,
-                  activeColor: const Color(0xFF00E5FF),
-                  onChanged: (v) {
-                    repo.sendCommand('solenoid', v ? 'OPEN' : 'CLOSED');
-                    AppNotifications.show(
-                      context,
-                      'Solenoide ${v ? "abierta" : "cerrada"}',
-                      type: v
-                          ? NotificationType.success
-                          : NotificationType.warning,
-                    );
-                  },
-                ),
-              ),
+              Expanded(child: _FuenteCard(type: FuenteType.fuente1)),
+              SizedBox(width: 10),
+              Expanded(child: _FuenteCard(type: FuenteType.fuente2)),
             ],
           ),
 
@@ -70,7 +36,6 @@ class ControlScreen extends ConsumerWidget {
           _SectionHeader(title: 'FUENTE DE AGUA', icon: Icons.water_drop),
           const SizedBox(height: 10),
 
-          // Segmented source selector
           _SourceSegmentedButton(
             current: state.activeSource,
             onChanged: (v) {
@@ -87,7 +52,6 @@ class ControlScreen extends ConsumerWidget {
           _SectionHeader(title: 'LECTURAS EN VIVO', icon: Icons.monitor_heart),
           const SizedBox(height: 10),
 
-          // Live metrics card
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -177,38 +141,74 @@ class ControlScreen extends ConsumerWidget {
       );
 }
 
-// ── Actuator card ─────────────────────────────────────────────────────
+// ── MQTT-Confirmed Fuente Card ─────────────────────────────────────────────────
 
-class _ActuatorCard extends StatelessWidget {
-  final String label;
-  final String subtitle;
-  final IconData icon;
-  final bool isActive;
-  final Color activeColor;
-  final ValueChanged<bool> onChanged;
-
-  const _ActuatorCard({
-    required this.label,
-    required this.subtitle,
-    required this.icon,
-    required this.isActive,
-    required this.activeColor,
-    required this.onChanged,
-  });
+class _FuenteCard extends ConsumerWidget {
+  final FuenteType type;
+  const _FuenteCard({required this.type});
 
   @override
-  Widget build(BuildContext context) {
-    final color = isActive ? activeColor : Colors.white24;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final actuatorState = ref.watch(actuatorProvider);
+
+    final bool isActive = switch (type) {
+      FuenteType.fuente1 => actuatorState.fuente1Active,
+      FuenteType.fuente2 => actuatorState.fuente2Active,
+    };
+    final bool isPending = actuatorState.pending == type;
+
+    final Color activeColor = switch (type) {
+      FuenteType.fuente1 => const Color(0xFF00E676),
+      FuenteType.fuente2 => const Color(0xFF00E5FF),
+    };
+    final IconData icon = switch (type) {
+      FuenteType.fuente1 => Icons.power_settings_new,
+      FuenteType.fuente2 => Icons.device_hub,
+    };
+    final String label = switch (type) {
+      FuenteType.fuente1 => 'Fuente 1',
+      FuenteType.fuente2 => 'Fuente 2',
+    };
+    final String subtitle = switch (type) {
+      FuenteType.fuente1 => isActive ? 'ENCENDIDA' : 'APAGADA',
+      FuenteType.fuente2 => isActive ? 'ACTIVA'    : 'INACTIVA',
+    };
+
+    // Fuente 2 hint badge
+    final bool isStub = type == FuenteType.fuente2;
+
+    final Color color = isActive ? activeColor : Colors.white24;
+
     return GestureDetector(
-      onTap: () => onChanged(!isActive),
+      onTap: isPending
+          ? null
+          : () {
+              ref.read(actuatorProvider.notifier).toggle(type);
+              if (!isStub) {
+                AppNotifications.show(
+                  context,
+                  'Fuente 1 → ${isActive ? "apagando Bomba + Solenoide" : "encendiendo Bomba + Solenoide"}',
+                  type: NotificationType.info,
+                );
+              }
+            },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: isActive ? activeColor.withAlpha(12) : const Color(0xFF1A1A2E),
+          color: isActive
+              ? activeColor.withAlpha(12)
+              : const Color(0xFF1A1A2E),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withAlpha(70), width: 1.5),
-          boxShadow: isActive
+          border: Border.all(
+            color: isPending
+                ? Colors.orange.withAlpha(80)
+                : isStub
+                    ? Colors.white12
+                    : color.withAlpha(70),
+            width: 1.5,
+          ),
+          boxShadow: isActive && !isStub
               ? [BoxShadow(color: activeColor.withAlpha(18), blurRadius: 14)]
               : null,
         ),
@@ -220,38 +220,68 @@ class _ActuatorCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(7),
                   decoration: BoxDecoration(
-                    color: color.withAlpha(18),
+                    color: (isStub ? Colors.white : color).withAlpha(18),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(icon, color: color, size: 18),
+                  child: Icon(
+                    icon,
+                    color: isStub ? Colors.white24 : color,
+                    size: 18,
+                  ),
                 ),
                 const Spacer(),
-                Switch.adaptive(
-                  value: isActive,
-                  activeTrackColor: activeColor,
-                  onChanged: onChanged,
-                ),
+                if (isPending)
+                  SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.orange.withAlpha(200),
+                    ),
+                  )
+                else
+                  Switch.adaptive(
+                    value: isActive,
+                    activeTrackColor: isStub ? Colors.white24 : activeColor,
+                    onChanged: isPending
+                        ? null
+                        : (_) => ref
+                            .read(actuatorProvider.notifier)
+                            .toggle(type),
+                  ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
               label,
               style: TextStyle(
-                color: Colors.white.withAlpha(180),
+                color: Colors.white.withAlpha(isStub ? 80 : 180),
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 2),
             Text(
-              subtitle,
+              isPending
+                  ? 'CONFIRMANDO...'
+                  : isStub
+                      ? 'SIN ACTUADOR'
+                      : subtitle,
               style: TextStyle(
-                color: color,
+                color: isPending
+                    ? Colors.orange
+                    : isStub
+                        ? Colors.white24
+                        : color,
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
                 fontFamily: 'monospace',
               ),
             ),
+            if (!isStub && isActive) ...[
+              const SizedBox(height: 6),
+              _DualActuatorBadge(),
+            ],
           ],
         ),
       ),
@@ -259,7 +289,52 @@ class _ActuatorCard extends StatelessWidget {
   }
 }
 
-// ── Source selector ───────────────────────────────────────────────────
+// ── Dual actuator confirmation badge ──────────────────────────────────────────
+
+class _DualActuatorBadge extends StatelessWidget {
+  const _DualActuatorBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _ActuatorDot(label: 'B', color: const Color(0xFF00E676)),
+        const SizedBox(width: 4),
+        _ActuatorDot(label: 'S', color: const Color(0xFF00E5FF)),
+      ],
+    );
+  }
+}
+
+class _ActuatorDot extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _ActuatorDot({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withAlpha(20),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withAlpha(60)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 8,
+          fontWeight: FontWeight.w800,
+          color: color,
+          fontFamily: 'monospace',
+        ),
+      ),
+    );
+  }
+}
+
+// ── Source selector ───────────────────────────────────────────────────────────
 
 class _SourceSegmentedButton extends StatelessWidget {
   final String current;
@@ -314,12 +389,11 @@ class _SourceSegmentedButton extends StatelessWidget {
   }
 }
 
-// ── Shared helper widgets ─────────────────────────────────────────────
+// ── Shared helpers ────────────────────────────────────────────────────────────
 
 class _MetricRow extends StatelessWidget {
   final String label;
   final Widget valueWidget;
-
   const _MetricRow({required this.label, required this.valueWidget});
 
   @override
@@ -329,10 +403,7 @@ class _MetricRow extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: TextStyle(
-              color: Colors.white.withAlpha(100),
-              fontSize: 12,
-            ),
+            style: TextStyle(color: Colors.white.withAlpha(100), fontSize: 12),
           ),
         ),
         valueWidget,
@@ -344,7 +415,6 @@ class _MetricRow extends StatelessWidget {
 class _SectionHeader extends StatelessWidget {
   final String title;
   final IconData icon;
-
   const _SectionHeader({required this.title, required this.icon});
 
   @override

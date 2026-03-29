@@ -17,6 +17,7 @@ _$WaterSystemStateImpl _$$WaterSystemStateImplFromJson(
   isPumpActive: json['isPumpActive'] as bool? ?? false,
   isSolenoidOpen: json['isSolenoidOpen'] as bool? ?? false,
   activeSource: json['activeSource'] as String? ?? 'lluvia',
+  fromBridgeNotification: json['fromBridgeNotification'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$$WaterSystemStateImplToJson(
@@ -30,4 +31,5 @@ Map<String, dynamic> _$$WaterSystemStateImplToJson(
   'isPumpActive': instance.isPumpActive,
   'isSolenoidOpen': instance.isSolenoidOpen,
   'activeSource': instance.activeSource,
+  'fromBridgeNotification': instance.fromBridgeNotification,
 };
