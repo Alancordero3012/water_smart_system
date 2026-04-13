@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/providers.dart';
 import '../../domain/actuator_notifier.dart';
 import '../dashboard/widgets/glow_value.dart';
+import '../dashboard/widgets/bomba_button.dart';
 import '../shared/app_notifications.dart';
 
 /// Full Control tab — Fuente 1 / Fuente 2 switches (MQTT-confirmed), source
@@ -32,7 +33,14 @@ class ControlScreen extends ConsumerWidget {
             ],
           ),
 
+          const SizedBox(height: 24),
+
+          // ── Botón Industrial Bomba ────────────────────────────────────
+          _SectionHeader(title: 'CONTROL BOMBA PRINCIPAL', icon: Icons.power_settings_new),
           const SizedBox(height: 20),
+          const _BombaSection(),
+
+          const SizedBox(height: 24),
           _SectionHeader(title: 'FUENTE DE AGUA', icon: Icons.water_drop),
           const SizedBox(height: 10),
 
@@ -166,16 +174,13 @@ class _FuenteCard extends ConsumerWidget {
       FuenteType.fuente2 => Icons.device_hub,
     };
     final String label = switch (type) {
-      FuenteType.fuente1 => 'Fuente 1',
-      FuenteType.fuente2 => 'Fuente 2',
+      FuenteType.fuente1 => 'Fuente Calle',
+      FuenteType.fuente2 => 'Fuente Lluvia',
     };
     final String subtitle = switch (type) {
       FuenteType.fuente1 => isActive ? 'ENCENDIDA' : 'APAGADA',
-      FuenteType.fuente2 => isActive ? 'ACTIVA'    : 'INACTIVA',
+      FuenteType.fuente2 => isActive ? 'ENCENDIDA'  : 'APAGADA',
     };
-
-    // Fuente 2 hint badge
-    final bool isStub = type == FuenteType.fuente2;
 
     final Color color = isActive ? activeColor : Colors.white24;
 
@@ -184,13 +189,12 @@ class _FuenteCard extends ConsumerWidget {
           ? null
           : () {
               ref.read(actuatorProvider.notifier).toggle(type);
-              if (!isStub) {
-                AppNotifications.show(
-                  context,
-                  'Fuente 1 → ${isActive ? "apagando Bomba + Solenoide" : "encendiendo Bomba + Solenoide"}',
-                  type: NotificationType.info,
-                );
-              }
+              final fuenteName = type == FuenteType.fuente1 ? 'Fuente Calle' : 'Fuente Lluvia';
+              AppNotifications.show(
+                context,
+                '$fuenteName → ${isActive ? "apagando Bomba + Solenoide" : "encendiendo Bomba + Solenoide"}',
+                type: NotificationType.info,
+              );
             },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
@@ -203,12 +207,10 @@ class _FuenteCard extends ConsumerWidget {
           border: Border.all(
             color: isPending
                 ? Colors.orange.withAlpha(80)
-                : isStub
-                    ? Colors.white12
-                    : color.withAlpha(70),
+                : color.withAlpha(70),
             width: 1.5,
           ),
-          boxShadow: isActive && !isStub
+          boxShadow: isActive
               ? [BoxShadow(color: activeColor.withAlpha(18), blurRadius: 14)]
               : null,
         ),
@@ -220,12 +222,12 @@ class _FuenteCard extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(7),
                   decoration: BoxDecoration(
-                    color: (isStub ? Colors.white : color).withAlpha(18),
+                    color: color.withAlpha(18),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     icon,
-                    color: isStub ? Colors.white24 : color,
+                    color: color,
                     size: 18,
                   ),
                 ),
@@ -242,7 +244,7 @@ class _FuenteCard extends ConsumerWidget {
                 else
                   Switch.adaptive(
                     value: isActive,
-                    activeTrackColor: isStub ? Colors.white24 : activeColor,
+                    activeTrackColor: activeColor,
                     onChanged: isPending
                         ? null
                         : (_) => ref
@@ -255,30 +257,22 @@ class _FuenteCard extends ConsumerWidget {
             Text(
               label,
               style: TextStyle(
-                color: Colors.white.withAlpha(isStub ? 80 : 180),
+                color: Colors.white.withAlpha(180),
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 2),
             Text(
-              isPending
-                  ? 'CONFIRMANDO...'
-                  : isStub
-                      ? 'SIN ACTUADOR'
-                      : subtitle,
+              isPending ? 'CONFIRMANDO...' : subtitle,
               style: TextStyle(
-                color: isPending
-                    ? Colors.orange
-                    : isStub
-                        ? Colors.white24
-                        : color,
+                color: isPending ? Colors.orange : color,
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
                 fontFamily: 'monospace',
               ),
             ),
-            if (!isStub && isActive) ...[
+            if (isActive) ...[
               const SizedBox(height: 6),
               _DualActuatorBadge(),
             ],
@@ -437,6 +431,161 @@ class _SectionHeader extends StatelessWidget {
           child: Container(height: 1, color: Colors.white.withAlpha(10)),
         ),
       ],
+    );
+  }
+}
+
+// ── Bomba Section container ───────────────────────────────────────────────────
+
+/// Contenedor con estética de panel de control industrial para el gran botón.
+class _BombaSection extends StatelessWidget {
+  const _BombaSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+      decoration: BoxDecoration(
+        // Fondo tipo panel metálico oscuro con veta sutil
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1C1C28), Color(0xFF13131A)],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.07),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.45),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Panel label top
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'PANEL  Nº 01',
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white.withOpacity(0.2),
+                  letterSpacing: 2,
+                  fontFamily: 'monospace',
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  'AGUA_IOT/ACTUADORES/BOMBA',
+                  style: TextStyle(
+                    fontSize: 7,
+                    fontFamily: 'monospace',
+                    color: Colors.white.withOpacity(0.18),
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // Gran botón centrado
+          const Center(child: BombaButton()),
+
+          const SizedBox(height: 20),
+
+          // Línea divisoria técnica
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 1,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.transparent,
+                        Colors.white.withOpacity(0.08),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // Bottom spec row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _SpecBadge(label: 'ID COMP', value: '6'),
+              const SizedBox(width: 10),
+              _SpecBadge(label: 'SEÑAL', value: '0 / 1'),
+              const SizedBox(width: 10),
+              _SpecBadge(label: 'PROTOCOLO', value: 'MQTT QoS1'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SpecBadge extends StatelessWidget {
+  final String label;
+  final String value;
+  const _SpecBadge({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 7,
+              color: Colors.white.withOpacity(0.25),
+              letterSpacing: 1,
+              fontFamily: 'monospace',
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              color: Colors.white.withOpacity(0.55),
+              fontFamily: 'monospace',
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

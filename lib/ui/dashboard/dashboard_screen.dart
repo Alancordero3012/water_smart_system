@@ -28,9 +28,15 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
 
   @override
   Widget build(BuildContext context) {
-    final asyncState = ref.watch(waterSystemAsyncProvider);
-    final history = ref.watch(sparklineHistoryProvider);
+    // processedSystemStateProvider SIEMPRE emite un WaterSystemState
+    // (valores en 0 por defecto). Nunca se queda en loading.
+    final state       = ref.watch(processedSystemStateProvider);
+    final asyncState  = ref.watch(waterSystemAsyncProvider);
+    final history     = ref.watch(sparklineHistoryProvider);
     final isSimulation = ref.watch(useSimulationProvider);
+
+    // Solo usamos asyncState para detectar error real del bridge
+    final hasError = asyncState is AsyncError;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -54,23 +60,15 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
 
         const SizedBox(height: 6),
 
-        // ── Tanks ───────────────────────────────────────────────────
-        asyncState.when(
-          loading: () => _skeletonTanks(),
-          error: (_, __) => const SizedBox.shrink(),
-          data: (state) => _buildTanks(state),
-        ),
+        // ── Tanks — siempre visible, 0% si aún no hay datos ────────
+        _buildTanks(state),
 
         const SizedBox(height: 10),
 
-        // ── Actuator status bar ─────────────────────────────────────
-        asyncState.when(
-          loading: () => const SizedBox.shrink(),
-          error: (_, __) => const SizedBox.shrink(),
-          data: (state) => Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _ActuatorStatusBar(state: state),
-          ),
+        // ── Actuator status bar — siempre visible ──────────────────
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: _ActuatorStatusBar(state: state),
         ),
 
         const SizedBox(height: 10),
@@ -114,45 +112,42 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
         ),
         const SizedBox(height: 6),
 
-        // ── EXPANDED Carousel ──────────────────────────────────────
+        // ── EXPANDED Carousel — siempre visible, error solo si bridge falla
         Expanded(
-          child: asyncState.when(
-            loading: () =>
-                const Center(child: CircularProgressIndicator()),
-            error: (err, __) => _buildBridgeErrorState(err.toString()),
-            data: (state) => Stack(
-              children: [
-                PageView(
-                  controller: _pageController,
-                  physics: const BouncingScrollPhysics(),
-                  onPageChanged: (i) => setState(() => _currentPage = i),
+          child: hasError
+              ? _buildBridgeErrorState(asyncState.error.toString())
+              : Stack(
                   children: [
-                    _card(_buildPressureCard(state, history)),
-                    _card(_buildFlowCard(state, history)),
-                    _card(_buildTurbidityCard(state, history)),
+                    PageView(
+                      controller: _pageController,
+                      physics: const BouncingScrollPhysics(),
+                      onPageChanged: (i) => setState(() => _currentPage = i),
+                      children: [
+                        _card(_buildPressureCard(state, history)),
+                        _card(_buildFlowCard(state, history)),
+                        _card(_buildTurbidityCard(state, history)),
+                      ],
+                    ),
+                    if (_currentPage > 0)
+                      _HoverArrow(
+                        alignment: Alignment.centerLeft,
+                        icon: Icons.chevron_left_rounded,
+                        onTap: () => _pageController.previousPage(
+                          duration: const Duration(milliseconds: 350),
+                          curve: Curves.easeInOutCubic,
+                        ),
+                      ),
+                    if (_currentPage < 2)
+                      _HoverArrow(
+                        alignment: Alignment.centerRight,
+                        icon: Icons.chevron_right_rounded,
+                        onTap: () => _pageController.nextPage(
+                          duration: const Duration(milliseconds: 350),
+                          curve: Curves.easeInOutCubic,
+                        ),
+                      ),
                   ],
                 ),
-                if (_currentPage > 0)
-                  _HoverArrow(
-                    alignment: Alignment.centerLeft,
-                    icon: Icons.chevron_left_rounded,
-                    onTap: () => _pageController.previousPage(
-                      duration: const Duration(milliseconds: 350),
-                      curve: Curves.easeInOutCubic,
-                    ),
-                  ),
-                if (_currentPage < 2)
-                  _HoverArrow(
-                    alignment: Alignment.centerRight,
-                    icon: Icons.chevron_right_rounded,
-                    onTap: () => _pageController.nextPage(
-                      duration: const Duration(milliseconds: 350),
-                      curve: Curves.easeInOutCubic,
-                    ),
-                  ),
-              ],
-            ),
-          ),
         ),
 
         const SizedBox(height: 12),
@@ -275,34 +270,6 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
                   level: state.streetTankLevel,
                   color: const Color(0xFF48CAE4),
                   icon: Icons.location_city,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-
-  Widget _skeletonTanks() => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: SizedBox(
-          height: 155,
-          child: Row(
-            children: [
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A2E),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A2E),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
                 ),
               ),
             ],

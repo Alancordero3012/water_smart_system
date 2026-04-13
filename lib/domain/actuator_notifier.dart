@@ -18,34 +18,46 @@ enum FuenteType { fuente1, fuente2 }
 /// Fuente 2 = stub (no physical actuator in current circuit).
 class ActuatorState {
   /// Hardware-confirmed states (from MQTT echo).
-  final bool fuente1Active; // true only when BOTH bomba=1 AND solenoide=1
-  final bool fuente2Active; // stub — local toggle only
+  final bool fuente1Active; // true solo cuando AMBOS bomba_calle=1 Y solenoide_calle=1
+  final bool fuente2Active; // true solo cuando AMBOS bomba_lluvia=1 Y solenoide_lluvia=1
 
   /// Which fuente is awaiting MQTT confirmation (shows spinner in UI).
   final FuenteType? pending;
 
-  /// Tracks partial Fuente 1 echo progress.
+  /// Fuente 1 eco parcial
   final bool _pumEchoReceived;
   final bool _solEchoReceived;
 
-  const ActuatorState({
-    this.fuente1Active      = false,
-    this.fuente2Active      = false,
-    this.pending,
-    bool pumpEchoReceived   = false,
-    bool solEchoReceived    = false,
-  })  : _pumEchoReceived = pumpEchoReceived,
-        _solEchoReceived = solEchoReceived;
+  /// Fuente 2 eco parcial
+  final bool _pump2EchoReceived;
+  final bool _sol2EchoReceived;
 
-  bool get pumpEchoReceived => _pumEchoReceived;
-  bool get solEchoReceived  => _solEchoReceived;
+  const ActuatorState({
+    this.fuente1Active       = false,
+    this.fuente2Active       = false,
+    this.pending,
+    bool pumpEchoReceived    = false,
+    bool solEchoReceived     = false,
+    bool pump2EchoReceived   = false,
+    bool sol2EchoReceived    = false,
+  })  : _pumEchoReceived   = pumpEchoReceived,
+        _solEchoReceived   = solEchoReceived,
+        _pump2EchoReceived = pump2EchoReceived,
+        _sol2EchoReceived  = sol2EchoReceived;
+
+  bool get pumpEchoReceived  => _pumEchoReceived;
+  bool get solEchoReceived   => _solEchoReceived;
+  bool get pump2EchoReceived => _pump2EchoReceived;
+  bool get sol2EchoReceived  => _sol2EchoReceived;
 
   ActuatorState copyWith({
     bool? fuente1Active,
     bool? fuente2Active,
-    Object? pending         = _sentinel,
+    Object? pending          = _sentinel,
     bool? pumpEchoReceived,
     bool? solEchoReceived,
+    bool? pump2EchoReceived,
+    bool? sol2EchoReceived,
   }) =>
       ActuatorState(
         fuente1Active      : fuente1Active      ?? this.fuente1Active,
@@ -53,6 +65,8 @@ class ActuatorState {
         pending            : identical(pending, _sentinel) ? this.pending : pending as FuenteType?,
         pumpEchoReceived   : pumpEchoReceived   ?? _pumEchoReceived,
         solEchoReceived    : solEchoReceived    ?? _solEchoReceived,
+        pump2EchoReceived  : pump2EchoReceived  ?? _pump2EchoReceived,
+        sol2EchoReceived   : sol2EchoReceived   ?? _sol2EchoReceived,
       );
 
   static const _sentinel = Object();
@@ -72,28 +86,27 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
 
   // ── External sync (called by stream listener) ─────────────────────────────
 
-  /// Called every time the MQTT stream delivers a new hardware state.
-  /// Fuente 1 is confirmed active only when BOTH pump AND solenoid are ON.
-  void syncFromMqtt({required bool isPump, required bool isSolenoid}) {
-    // Not pending Fuente 1 — just mirror the hardware state
+  /// Recibe el estado actualizado de TODOS los actuadores desde el stream MQTT.
+  /// Fuente Calle confirma con isBombaCalle + isSolCalle (desacoplado de BombaButton).
+  /// Fuente Lluvia confirma con isBombaLluvia + isSoleLluvia.
+  void syncFromMqtt({
+    required bool isBombaCalle,
+    required bool isSolCalle,
+    required bool isBombaLluvia,
+    required bool isSoleLluvia,
+  }) {
+    // ── Fuente Calle ──────────────────────────────────────────────────────────
     if (state.pending == null || state.pending == FuenteType.fuente2) {
       state = state.copyWith(
-        fuente1Active    : isPump && isSolenoid,
-        pumpEchoReceived : isPump,
-        solEchoReceived  : isSolenoid,
-        pending          : null,
+        fuente1Active    : isBombaCalle && isSolCalle,
+        pumpEchoReceived : isBombaCalle,
+        solEchoReceived  : isSolCalle,
       );
-      return;
-    }
-
-    // Fuente 1 is pending — accumulate echos
-    if (state.pending == FuenteType.fuente1) {
-      final newPumpEcho = state.pumpEchoReceived || isPump;
-      final newSolEcho  = state.solEchoReceived  || isSolenoid;
-
+    } else if (state.pending == FuenteType.fuente1) {
+      final newPumpEcho = state.pumpEchoReceived || isBombaCalle;
+      final newSolEcho  = state.solEchoReceived  || isSolCalle;
       if (newPumpEcho && newSolEcho) {
-        // Both echos received → CONFIRMED
-        debugPrint('✅ Fuente 1 confirmada por MQTT (bomba + solenoide)');
+        debugPrint('✅ Fuente Calle confirmada — bomba_calle + solenoide_calle');
         _timeout?.cancel();
         state = state.copyWith(
           fuente1Active    : true,
@@ -102,11 +115,36 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
           solEchoReceived  : false,
         );
       } else {
-        // Partial — wait for the second echo
-        debugPrint('⏳ Fuente 1: eco parcial — bomba=$newPumpEcho, solenoide=$newSolEcho');
         state = state.copyWith(
-          pumpEchoReceived : newPumpEcho,
-          solEchoReceived  : newSolEcho,
+          pumpEchoReceived: newPumpEcho,
+          solEchoReceived : newSolEcho,
+        );
+      }
+    }
+
+    // ── Fuente 2 ────────────────────────────────────────────────────────────
+    if (state.pending == null || state.pending == FuenteType.fuente1) {
+      state = state.copyWith(
+        fuente2Active      : isBombaLluvia && isSoleLluvia,
+        pump2EchoReceived  : isBombaLluvia,
+        sol2EchoReceived   : isSoleLluvia,
+      );
+    } else if (state.pending == FuenteType.fuente2) {
+      final newPump2Echo = state.pump2EchoReceived || isBombaLluvia;
+      final newSol2Echo  = state.sol2EchoReceived  || isSoleLluvia;
+      if (newPump2Echo && newSol2Echo) {
+        debugPrint('✅ Fuente Lluvia confirmada — bomba_lluvia + solenoide_lluvia');
+        _timeout?.cancel();
+        state = state.copyWith(
+          fuente2Active      : true,
+          pending            : null,
+          pump2EchoReceived  : false,
+          sol2EchoReceived   : false,
+        );
+      } else {
+        state = state.copyWith(
+          pump2EchoReceived: newPump2Echo,
+          sol2EchoReceived : newSol2Echo,
         );
       }
     }
@@ -114,47 +152,88 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
 
   // ── User command ──────────────────────────────────────────────────────────
 
+  //  ⚠️ REGLA DE EXCLUSIÓN MUTUA:
+  //  Fuente 1 (CALLE) y Fuente 2 (LLUVIA) NO pueden estar activas al mismo tiempo.
+  //  Si se intenta encender una mientras la otra está activa, primero se apaga
+  //  la activa y luego se enciende la nueva (con el debounce normal como buffer).
+
   void toggle(FuenteType fuente) {
-    if (state.pending != null) return; // block rapid taps while pending
+    if (state.pending != null) return;
 
-    if (fuente == FuenteType.fuente2) {
-      // Stub — toggle locally, no MQTT
-      state = state.copyWith(fuente2Active: !state.fuente2Active);
-      debugPrint('ℹ️ Fuente 2 (stub): toggled to ${state.fuente2Active}');
-      return;
-    }
+    if (fuente == FuenteType.fuente1) {
+      final desired = !state.fuente1Active;
+      final value   = desired ? '1' : '0';
 
-    // ── Fuente 1: dual MQTT command ───────────────────────────────────────
-    final desired = !state.fuente1Active;
-    final value   = desired ? '1' : '0';
+      // ── INTERLOCK ────────────────────────────────────────────────────────
+      // Si queremos ENCENDER Fuente 1 y Fuente 2 está activa → apagar Fuente 2
+      if (desired && state.fuente2Active) {
+        debugPrint('🔒 Interlock: apagando Fuente 2 (LLUVIA) → Fuente 1 (CALLE) tomará el control');
+        _repo.sendCommand('bomba_lluvia',     '0');
+        _repo.sendCommand('solenoide_lluvia', '0');
+        // El eco llegará y actualizará fuente2Active=false vía syncFromMqtt
+      }
 
-    state = state.copyWith(
-      pending          : FuenteType.fuente1,
-      pumpEchoReceived : false,
-      solEchoReceived  : false,
-    );
-
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: _debounceMs), () {
-      debugPrint('📤 Fuente 1 → bomba=$value, solenoide=$value');
-      _repo.sendCommand('bomba',     value);
-      _repo.sendCommand('solenoide', value);
-
-      // Safety timeout: clear pending if echos don't arrive
-      _timeout?.cancel();
-      _timeout = Timer(const Duration(seconds: _timeoutSec), () {
-        if (state.pending == FuenteType.fuente1) {
-          final partial = state.pumpEchoReceived || state.solEchoReceived;
-          debugPrint('⚠️ Timeout Fuente 1 — eco parcial: $partial. Forzando estado=$desired');
-          state = state.copyWith(
-            fuente1Active    : desired && partial, // partial success
-            pending          : null,
-            pumpEchoReceived : false,
-            solEchoReceived  : false,
-          );
-        }
+      state = state.copyWith(
+        pending          : FuenteType.fuente1,
+        pumpEchoReceived : false,
+        solEchoReceived  : false,
+      );
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: _debounceMs), () {
+        debugPrint('📤 Fuente 1 (CALLE) → bomba_calle=$value, solenoide_calle=$value');
+        _repo.sendCommand('bomba_calle',     value);
+        _repo.sendCommand('solenoide_calle', value);
+        _timeout?.cancel();
+        _timeout = Timer(const Duration(seconds: _timeoutSec), () {
+          if (state.pending == FuenteType.fuente1) {
+            debugPrint('⚠️ Timeout Fuente 1 — forzando estado=$desired');
+            state = state.copyWith(
+              fuente1Active    : desired && (state.pumpEchoReceived || state.solEchoReceived),
+              pending          : null,
+              pumpEchoReceived : false,
+              solEchoReceived  : false,
+            );
+          }
+        });
       });
-    });
+    } else {
+      // ── Fuente 2: LLUVIA ─────────────────────────────────────────────────
+      final desired = !state.fuente2Active;
+      final value   = desired ? '1' : '0';
+
+      // ── INTERLOCK ────────────────────────────────────────────────────────
+      // Si queremos ENCENDER Fuente 2 y Fuente 1 está activa → apagar Fuente 1
+      if (desired && state.fuente1Active) {
+        debugPrint('🔒 Interlock: apagando Fuente 1 (CALLE) → Fuente 2 (LLUVIA) tomará el control');
+        _repo.sendCommand('bomba_calle',     '0');
+        _repo.sendCommand('solenoide_calle', '0');
+        // El eco llegará y actualizará fuente1Active=false vía syncFromMqtt
+      }
+
+      state = state.copyWith(
+        pending           : FuenteType.fuente2,
+        pump2EchoReceived : false,
+        sol2EchoReceived  : false,
+      );
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: _debounceMs), () {
+        debugPrint('📤 Fuente 2 (LLUVIA) → bomba_lluvia=$value, solenoide_lluvia=$value');
+        _repo.sendCommand('bomba_lluvia',     value);
+        _repo.sendCommand('solenoide_lluvia', value);
+        _timeout?.cancel();
+        _timeout = Timer(const Duration(seconds: _timeoutSec), () {
+          if (state.pending == FuenteType.fuente2) {
+            debugPrint('⚠️ Timeout Fuente 2 — forzando estado=$desired');
+            state = state.copyWith(
+              fuente2Active      : desired && (state.pump2EchoReceived || state.sol2EchoReceived),
+              pending            : null,
+              pump2EchoReceived  : false,
+              sol2EchoReceived   : false,
+            );
+          }
+        });
+      });
+    }
   }
 
   @override
@@ -172,11 +251,12 @@ final actuatorProvider =
   final repo     = ref.watch(waterDataRepositoryProvider);
   final notifier = ActuatorNotifier(repo);
 
-  // Keep actuator state in sync with the live MQTT stream
   ref.listen(processedSystemStateProvider, (_, next) {
     notifier.syncFromMqtt(
-      isPump     : next.isPumpActive,
-      isSolenoid : next.isSolenoidOpen,
+      isBombaCalle  : next.isBombaCalleActive,
+      isSolCalle    : next.isSolenoideCalleOpen,
+      isBombaLluvia : next.isBombaLluviaActive,
+      isSoleLluvia  : next.isSoleLluviaOpen,
     );
   });
 

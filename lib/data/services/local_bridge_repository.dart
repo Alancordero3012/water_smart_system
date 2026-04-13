@@ -28,13 +28,26 @@ class LocalBridgeRepository implements WaterDataRepository {
   Stream<WaterSystemState> get stateStream => _stateController.stream;
 
   // Topic → field mapping (must match what index.js broadcasts)
-  static const String _topicPresion1    = 'agua_iot/sensores_presion/1';
-  static const String _topicPresion2    = 'agua_iot/sensores_presion/2';
-  static const String _topicNivelLluvia = 'agua_iot/nivel/lectura';
-  static const String _topicNivelCalle  = 'agua_iot/nivel/lectura_2';
-  static const String _topicTurbidez    = 'agua_iot/calidad/turbidez';
-  static const String _topicBomba       = 'agua_iot/actuadores/bomba';
-  static const String _topicSolenoide   = 'agua_iot/actuadores/solenoide';
+  static const String _topicPresion1     = 'agua_iot/sensores_presion/1';
+  static const String _topicPresion2     = 'agua_iot/sensores_presion/2';
+  // Legacy (simulador.js)
+  static const String _topicNivelLluvia  = 'agua_iot/nivel/lectura';
+  static const String _topicNivelCalle   = 'agua_iot/nivel/lectura_2';
+  // ESP32 hardware real — tanques con reed switches
+  static const String _topicTanqueLluvia = 'agua_iot/tanque_lluvia/nivel';
+  static const String _topicTanqueCalle  = 'agua_iot/tanque_calle/nivel';
+  // ESP32 hardware real — presión ADC y flujo por pulsos
+  static const String _topicPresionReal  = 'agua_iot/sensores/presion';
+  static const String _topicFlujoReal    = 'agua_iot/sensores/flujo';
+  static const String _topicTurbidez     = 'agua_iot/calidad/turbidez';
+  // Actuadores — legacy
+  static const String _topicBomba        = 'agua_iot/actuadores/bomba';
+  static const String _topicSolenoide    = 'agua_iot/actuadores/solenoide';
+  // Actuadores — ESP32_WaterSmart_Alan (hardware real)
+  static const String _topicBombaCalle     = 'agua_iot/actuadores/bomba_calle';
+  static const String _topicSolenoideCalle = 'agua_iot/actuadores/solenoide_calle';
+  static const String _topicBombaLluvia    = 'agua_iot/actuadores/bomba_lluvia';
+  static const String _topicSolenoideL     = 'agua_iot/actuadores/solenoide_lluvia';
 
   @override
   Future<void> initialize() async {
@@ -95,13 +108,23 @@ class LocalBridgeRepository implements WaterDataRepository {
         _currentState.copyWith(fromBridgeNotification: false);
 
     switch (topic) {
-      case _topicPresion1:    next = next.copyWith(streetPressure: value); break;
-      case _topicPresion2:    next = next.copyWith(flowRate: value); break;
-      case _topicNivelLluvia: next = next.copyWith(rainTankLevel: value); break;
-      case _topicNivelCalle:  next = next.copyWith(streetTankLevel: value); break;
+      case _topicPresion1:
+      case _topicPresionReal:  next = next.copyWith(streetPressure: value); break;
+      case _topicPresion2:
+      case _topicFlujoReal:    next = next.copyWith(flowRate: value);       break;
+      // Legacy y ESP32 hardware mapean al mismo campo
+      case _topicNivelLluvia:
+      case _topicTanqueLluvia: next = next.copyWith(rainTankLevel: value);   break;
+      case _topicNivelCalle:
+      case _topicTanqueCalle:  next = next.copyWith(streetTankLevel: value); break;
       case _topicTurbidez:    next = next.copyWith(turbidity: value); break;
-      case _topicBomba:       next = next.copyWith(isPumpActive: value > 0.5); break;
-      case _topicSolenoide:   next = next.copyWith(isSolenoidOpen: value > 0.5); break;
+      // Actuadores: completamente desacoplados por tópico
+      case _topicBomba:          next = next.copyWith(isPumpActive: value > 0.5); break;
+      case _topicSolenoide:      next = next.copyWith(isSolenoidOpen: value > 0.5); break;
+      case _topicBombaCalle:     next = next.copyWith(isBombaCalleActive: value > 0.5); break;
+      case _topicSolenoideCalle: next = next.copyWith(isSolenoideCalleOpen: value > 0.5); break;
+      case _topicBombaLluvia:    next = next.copyWith(isBombaLluviaActive: value > 0.5); break;
+      case _topicSolenoideL:     next = next.copyWith(isSoleLluviaOpen: value > 0.5); break;
       default: return;
     }
 

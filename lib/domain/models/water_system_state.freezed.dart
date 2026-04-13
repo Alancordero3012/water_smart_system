@@ -25,14 +25,19 @@ mixin _$WaterSystemState {
   double get streetTankLevel => throw _privateConstructorUsedError;
   double get flowRate => throw _privateConstructorUsedError;
   double get streetPressure => throw _privateConstructorUsedError;
-  double get turbidity => throw _privateConstructorUsedError;
+  double get turbidity =>
+      throw _privateConstructorUsedError; // BombaButton standalone — agua_iot/actuadores/bomba (NO comparte con Fuentes)
   bool get isPumpActive => throw _privateConstructorUsedError;
-  bool get isSolenoidOpen => throw _privateConstructorUsedError;
+  bool get isSolenoidOpen =>
+      throw _privateConstructorUsedError; // Fuente Calle — bomba_calle + solenoide_calle
+  bool get isBombaCalleActive => throw _privateConstructorUsedError;
+  bool get isSolenoideCalleOpen =>
+      throw _privateConstructorUsedError; // Fuente Lluvia — bomba_lluvia + solenoide_lluvia
+  bool get isBombaLluviaActive => throw _privateConstructorUsedError;
+  bool get isSoleLluviaOpen => throw _privateConstructorUsedError;
   String get activeSource => throw _privateConstructorUsedError;
 
-  /// True only when this state update was triggered by a message on
-  /// `agua_iot/notificaciones` (published by the Node.js bridge after
-  /// its own threshold checks). Reset to false on every regular sensor update.
+  /// True solo cuando el update viene de `agua_iot/notificaciones`.
   bool get fromBridgeNotification => throw _privateConstructorUsedError;
 
   /// Serializes this WaterSystemState to a JSON map.
@@ -60,6 +65,10 @@ abstract class $WaterSystemStateCopyWith<$Res> {
     double turbidity,
     bool isPumpActive,
     bool isSolenoidOpen,
+    bool isBombaCalleActive,
+    bool isSolenoideCalleOpen,
+    bool isBombaLluviaActive,
+    bool isSoleLluviaOpen,
     String activeSource,
     bool fromBridgeNotification,
   });
@@ -87,6 +96,10 @@ class _$WaterSystemStateCopyWithImpl<$Res, $Val extends WaterSystemState>
     Object? turbidity = null,
     Object? isPumpActive = null,
     Object? isSolenoidOpen = null,
+    Object? isBombaCalleActive = null,
+    Object? isSolenoideCalleOpen = null,
+    Object? isBombaLluviaActive = null,
+    Object? isSoleLluviaOpen = null,
     Object? activeSource = null,
     Object? fromBridgeNotification = null,
   }) {
@@ -120,6 +133,22 @@ class _$WaterSystemStateCopyWithImpl<$Res, $Val extends WaterSystemState>
                 ? _value.isSolenoidOpen
                 : isSolenoidOpen // ignore: cast_nullable_to_non_nullable
                       as bool,
+            isBombaCalleActive: null == isBombaCalleActive
+                ? _value.isBombaCalleActive
+                : isBombaCalleActive // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            isSolenoideCalleOpen: null == isSolenoideCalleOpen
+                ? _value.isSolenoideCalleOpen
+                : isSolenoideCalleOpen // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            isBombaLluviaActive: null == isBombaLluviaActive
+                ? _value.isBombaLluviaActive
+                : isBombaLluviaActive // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            isSoleLluviaOpen: null == isSoleLluviaOpen
+                ? _value.isSoleLluviaOpen
+                : isSoleLluviaOpen // ignore: cast_nullable_to_non_nullable
+                      as bool,
             activeSource: null == activeSource
                 ? _value.activeSource
                 : activeSource // ignore: cast_nullable_to_non_nullable
@@ -151,6 +180,10 @@ abstract class _$$WaterSystemStateImplCopyWith<$Res>
     double turbidity,
     bool isPumpActive,
     bool isSolenoidOpen,
+    bool isBombaCalleActive,
+    bool isSolenoideCalleOpen,
+    bool isBombaLluviaActive,
+    bool isSoleLluviaOpen,
     String activeSource,
     bool fromBridgeNotification,
   });
@@ -177,6 +210,10 @@ class __$$WaterSystemStateImplCopyWithImpl<$Res>
     Object? turbidity = null,
     Object? isPumpActive = null,
     Object? isSolenoidOpen = null,
+    Object? isBombaCalleActive = null,
+    Object? isSolenoideCalleOpen = null,
+    Object? isBombaLluviaActive = null,
+    Object? isSoleLluviaOpen = null,
     Object? activeSource = null,
     Object? fromBridgeNotification = null,
   }) {
@@ -210,6 +247,22 @@ class __$$WaterSystemStateImplCopyWithImpl<$Res>
             ? _value.isSolenoidOpen
             : isSolenoidOpen // ignore: cast_nullable_to_non_nullable
                   as bool,
+        isBombaCalleActive: null == isBombaCalleActive
+            ? _value.isBombaCalleActive
+            : isBombaCalleActive // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        isSolenoideCalleOpen: null == isSolenoideCalleOpen
+            ? _value.isSolenoideCalleOpen
+            : isSolenoideCalleOpen // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        isBombaLluviaActive: null == isBombaLluviaActive
+            ? _value.isBombaLluviaActive
+            : isBombaLluviaActive // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        isSoleLluviaOpen: null == isSoleLluviaOpen
+            ? _value.isSoleLluviaOpen
+            : isSoleLluviaOpen // ignore: cast_nullable_to_non_nullable
+                  as bool,
         activeSource: null == activeSource
             ? _value.activeSource
             : activeSource // ignore: cast_nullable_to_non_nullable
@@ -234,6 +287,10 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
     this.turbidity = 0.0,
     this.isPumpActive = false,
     this.isSolenoidOpen = false,
+    this.isBombaCalleActive = false,
+    this.isSolenoideCalleOpen = false,
+    this.isBombaLluviaActive = false,
+    this.isSoleLluviaOpen = false,
     this.activeSource = 'lluvia',
     this.fromBridgeNotification = false,
   });
@@ -256,26 +313,39 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
   @override
   @JsonKey()
   final double turbidity;
+  // BombaButton standalone — agua_iot/actuadores/bomba (NO comparte con Fuentes)
   @override
   @JsonKey()
   final bool isPumpActive;
   @override
   @JsonKey()
   final bool isSolenoidOpen;
+  // Fuente Calle — bomba_calle + solenoide_calle
+  @override
+  @JsonKey()
+  final bool isBombaCalleActive;
+  @override
+  @JsonKey()
+  final bool isSolenoideCalleOpen;
+  // Fuente Lluvia — bomba_lluvia + solenoide_lluvia
+  @override
+  @JsonKey()
+  final bool isBombaLluviaActive;
+  @override
+  @JsonKey()
+  final bool isSoleLluviaOpen;
   @override
   @JsonKey()
   final String activeSource;
 
-  /// True only when this state update was triggered by a message on
-  /// `agua_iot/notificaciones` (published by the Node.js bridge after
-  /// its own threshold checks). Reset to false on every regular sensor update.
+  /// True solo cuando el update viene de `agua_iot/notificaciones`.
   @override
   @JsonKey()
   final bool fromBridgeNotification;
 
   @override
   String toString() {
-    return 'WaterSystemState(rainTankLevel: $rainTankLevel, streetTankLevel: $streetTankLevel, flowRate: $flowRate, streetPressure: $streetPressure, turbidity: $turbidity, isPumpActive: $isPumpActive, isSolenoidOpen: $isSolenoidOpen, activeSource: $activeSource, fromBridgeNotification: $fromBridgeNotification)';
+    return 'WaterSystemState(rainTankLevel: $rainTankLevel, streetTankLevel: $streetTankLevel, flowRate: $flowRate, streetPressure: $streetPressure, turbidity: $turbidity, isPumpActive: $isPumpActive, isSolenoidOpen: $isSolenoidOpen, isBombaCalleActive: $isBombaCalleActive, isSolenoideCalleOpen: $isSolenoideCalleOpen, isBombaLluviaActive: $isBombaLluviaActive, isSoleLluviaOpen: $isSoleLluviaOpen, activeSource: $activeSource, fromBridgeNotification: $fromBridgeNotification)';
   }
 
   @override
@@ -297,6 +367,14 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
                 other.isPumpActive == isPumpActive) &&
             (identical(other.isSolenoidOpen, isSolenoidOpen) ||
                 other.isSolenoidOpen == isSolenoidOpen) &&
+            (identical(other.isBombaCalleActive, isBombaCalleActive) ||
+                other.isBombaCalleActive == isBombaCalleActive) &&
+            (identical(other.isSolenoideCalleOpen, isSolenoideCalleOpen) ||
+                other.isSolenoideCalleOpen == isSolenoideCalleOpen) &&
+            (identical(other.isBombaLluviaActive, isBombaLluviaActive) ||
+                other.isBombaLluviaActive == isBombaLluviaActive) &&
+            (identical(other.isSoleLluviaOpen, isSoleLluviaOpen) ||
+                other.isSoleLluviaOpen == isSoleLluviaOpen) &&
             (identical(other.activeSource, activeSource) ||
                 other.activeSource == activeSource) &&
             (identical(other.fromBridgeNotification, fromBridgeNotification) ||
@@ -314,6 +392,10 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
     turbidity,
     isPumpActive,
     isSolenoidOpen,
+    isBombaCalleActive,
+    isSolenoideCalleOpen,
+    isBombaLluviaActive,
+    isSoleLluviaOpen,
     activeSource,
     fromBridgeNotification,
   );
@@ -344,6 +426,10 @@ abstract class _WaterSystemState implements WaterSystemState {
     final double turbidity,
     final bool isPumpActive,
     final bool isSolenoidOpen,
+    final bool isBombaCalleActive,
+    final bool isSolenoideCalleOpen,
+    final bool isBombaLluviaActive,
+    final bool isSoleLluviaOpen,
     final String activeSource,
     final bool fromBridgeNotification,
   }) = _$WaterSystemStateImpl;
@@ -360,17 +446,23 @@ abstract class _WaterSystemState implements WaterSystemState {
   @override
   double get streetPressure;
   @override
-  double get turbidity;
+  double get turbidity; // BombaButton standalone — agua_iot/actuadores/bomba (NO comparte con Fuentes)
   @override
   bool get isPumpActive;
   @override
-  bool get isSolenoidOpen;
+  bool get isSolenoidOpen; // Fuente Calle — bomba_calle + solenoide_calle
+  @override
+  bool get isBombaCalleActive;
+  @override
+  bool get isSolenoideCalleOpen; // Fuente Lluvia — bomba_lluvia + solenoide_lluvia
+  @override
+  bool get isBombaLluviaActive;
+  @override
+  bool get isSoleLluviaOpen;
   @override
   String get activeSource;
 
-  /// True only when this state update was triggered by a message on
-  /// `agua_iot/notificaciones` (published by the Node.js bridge after
-  /// its own threshold checks). Reset to false on every regular sensor update.
+  /// True solo cuando el update viene de `agua_iot/notificaciones`.
   @override
   bool get fromBridgeNotification;
 

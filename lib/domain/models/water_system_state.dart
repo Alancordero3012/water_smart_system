@@ -11,12 +11,17 @@ class WaterSystemState with _$WaterSystemState {
     @Default(0.0) double flowRate,
     @Default(0.0) double streetPressure,
     @Default(0.0) double turbidity,
+    // BombaButton standalone — agua_iot/actuadores/bomba (NO comparte con Fuentes)
     @Default(false) bool isPumpActive,
     @Default(false) bool isSolenoidOpen,
+    // Fuente Calle — bomba_calle + solenoide_calle
+    @Default(false) bool isBombaCalleActive,
+    @Default(false) bool isSolenoideCalleOpen,
+    // Fuente Lluvia — bomba_lluvia + solenoide_lluvia
+    @Default(false) bool isBombaLluviaActive,
+    @Default(false) bool isSoleLluviaOpen,
     @Default('lluvia') String activeSource,
-    /// True only when this state update was triggered by a message on
-    /// `agua_iot/notificaciones` (published by the Node.js bridge after
-    /// its own threshold checks). Reset to false on every regular sensor update.
+    /// True solo cuando el update viene de `agua_iot/notificaciones`.
     @Default(false) bool fromBridgeNotification,
   }) = _WaterSystemState;
 

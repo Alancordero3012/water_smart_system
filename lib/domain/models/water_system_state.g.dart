@@ -16,6 +16,10 @@ _$WaterSystemStateImpl _$$WaterSystemStateImplFromJson(
   turbidity: (json['turbidity'] as num?)?.toDouble() ?? 0.0,
   isPumpActive: json['isPumpActive'] as bool? ?? false,
   isSolenoidOpen: json['isSolenoidOpen'] as bool? ?? false,
+  isBombaCalleActive: json['isBombaCalleActive'] as bool? ?? false,
+  isSolenoideCalleOpen: json['isSolenoideCalleOpen'] as bool? ?? false,
+  isBombaLluviaActive: json['isBombaLluviaActive'] as bool? ?? false,
+  isSoleLluviaOpen: json['isSoleLluviaOpen'] as bool? ?? false,
   activeSource: json['activeSource'] as String? ?? 'lluvia',
   fromBridgeNotification: json['fromBridgeNotification'] as bool? ?? false,
 );
@@ -30,6 +34,10 @@ Map<String, dynamic> _$$WaterSystemStateImplToJson(
   'turbidity': instance.turbidity,
   'isPumpActive': instance.isPumpActive,
   'isSolenoidOpen': instance.isSolenoidOpen,
+  'isBombaCalleActive': instance.isBombaCalleActive,
+  'isSolenoideCalleOpen': instance.isSolenoideCalleOpen,
+  'isBombaLluviaActive': instance.isBombaLluviaActive,
+  'isSoleLluviaOpen': instance.isSoleLluviaOpen,
   'activeSource': instance.activeSource,
   'fromBridgeNotification': instance.fromBridgeNotification,
 };

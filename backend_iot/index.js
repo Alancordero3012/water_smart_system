@@ -64,13 +64,32 @@ client.on('connect', () => {
     console.log('✅ Conectado a HiveMQ Cloud con éxito');
 
     const topics = [
+        // ── Tópicos Legacy (simulador.js) ────────────────────────────────────
         'agua_iot/sensores_presion/1',
         'agua_iot/sensores_presion/2',
         'agua_iot/nivel/lectura',
         'agua_iot/nivel/lectura_2',
         'agua_iot/calidad/turbidez',
         'agua_iot/actuadores/bomba',
-        'agua_iot/actuadores/solenoide'
+        'agua_iot/actuadores/solenoide',
+        // ── Tópicos ESP32 Tanques (hardware real) ─────────────────────────────
+        'agua_iot/tanque_lluvia/nivel',
+        'agua_iot/tanque_calle/nivel',
+        'agua_iot/tanque_lluvia/sensor_0',
+        'agua_iot/tanque_lluvia/sensor_50',
+        'agua_iot/tanque_lluvia/sensor_100',
+        'agua_iot/tanque_calle/sensor_0',
+        'agua_iot/tanque_calle/sensor_50',
+        'agua_iot/tanque_calle/sensor_100',
+        // ── Tópicos ESP32 Presión y Flujo (hardware real) ──────────────────────
+        'agua_iot/sensores/presion',
+        'agua_iot/sensores/flujo',
+        // ── Tópicos ESP32 Actuadores (hardware real) ─────────────────────────
+        // ESP32_WaterSmart_Alan: Fuente 1 (calle) y Fuente 2 (lluvia)
+        'agua_iot/actuadores/bomba_calle',
+        'agua_iot/actuadores/solenoide_calle',
+        'agua_iot/actuadores/bomba_lluvia',
+        'agua_iot/actuadores/solenoide_lluvia',
     ];
 
     client.subscribe(topics, (err) => {
@@ -93,13 +112,24 @@ client.on('offline', () => {
 
 // --- Mapeo de Tópicos a IDs de Componente ---
 const TOPIC_MAP = {
-    'agua_iot/sensores_presion/1': 1,  // Presión Bomba 1
-    'agua_iot/sensores_presion/2': 2,  // Presión Bomba 2
-    'agua_iot/nivel/lectura':      3,  // Nivel Tanque Lluvia
-    'agua_iot/nivel/lectura_2':    4,  // Nivel Tanque Calle
+    // ── Sensores y actuadores (legacy / simulador) ────────────────────────────
+    'agua_iot/sensores_presion/1': 1,  // Presión (tópico legacy)
+    'agua_iot/sensores_presion/2': 2,  // Flujo   (tópico legacy)
+    'agua_iot/nivel/lectura':      3,  // Nivel Tanque Lluvia  (tópico legacy)
+    'agua_iot/nivel/lectura_2':    4,  // Nivel Tanque Calle   (tópico legacy)
     'agua_iot/calidad/turbidez':   5,  // Turbidez
     'agua_iot/actuadores/bomba':   6,  // Estado Bomba (0/1)
     'agua_iot/actuadores/solenoide': 7, // Estado Solenoide (0/1)
+    // ── Tópicos ESP32 hardware real ───────────────────────────────────────────
+    'agua_iot/tanque_lluvia/nivel': 3,
+    'agua_iot/tanque_calle/nivel':  4,
+    'agua_iot/sensores/presion':    1,
+    'agua_iot/sensores/flujo':      2,
+    // Actuadores ESP32_WaterSmart_Alan (mismos IDs que legacy)
+    'agua_iot/actuadores/bomba_calle'      : 6,
+    'agua_iot/actuadores/solenoide_calle'  : 7,
+    'agua_iot/actuadores/bomba_lluvia'     : 6,  // mismo ID que bomba
+    'agua_iot/actuadores/solenoide_lluvia' : 7,  // mismo ID que solenoide
 };
 
 // --- Lógica del Puente (MQTT -> MySQL) ---
@@ -229,25 +259,32 @@ wss.on('connection', (ws, req) => {
     ws.send(JSON.stringify({ type: 'connected', message: 'Bridge WS OK' }));
 
     // Handle actuator commands from Flutter Web
-    // Expected format: { "command": "bomba" | "solenoide", "value": "1" | "0" }
+    // Format: { "command": "bomba_calle" | "solenoide_calle" | etc, "value": "1"|"0" }
     ws.on('message', (data) => {
         try {
             const msg = JSON.parse(data.toString());
             if (msg.command && msg.value !== undefined) {
                 const topicMap = {
-                    'bomba':     'agua_iot/actuadores/bomba',
-                    'solenoide': 'agua_iot/actuadores/solenoide',
+                    // ESP32_Bomba_Unica (standalone)
+                    'bomba'            : 'agua_iot/actuadores/bomba',
+                    'solenoide'        : 'agua_iot/actuadores/solenoide',
+                    // ESP32_WaterSmart_Alan — Fuente 1 (calle)
+                    'bomba_calle'      : 'agua_iot/actuadores/bomba_calle',
+                    'solenoide_calle'  : 'agua_iot/actuadores/solenoide_calle',
+                    // ESP32_WaterSmart_Alan — Fuente 2 (lluvia)
+                    'bomba_lluvia'     : 'agua_iot/actuadores/bomba_lluvia',
+                    'solenoide_lluvia' : 'agua_iot/actuadores/solenoide_lluvia',
                 };
                 const topic = topicMap[msg.command];
                 if (topic) {
-                    console.log(`\uD83D\uDD27 Comando desde Flutter Web: ${topic} = ${msg.value}`);
+                    console.log(`🔧 Comando desde Flutter Web: ${topic} = ${msg.value}`);
                     client.publish(topic, String(msg.value), { qos: 1, retain: true });
                 } else {
-                    console.warn(`\u26A0\uFE0F Comando desconocido: ${msg.command}`);
+                    console.warn(`⚠️ Comando desconocido: ${msg.command}`);
                 }
             }
         } catch (e) {
-            console.error('\u26A0\uFE0F Error parseando mensaje WS:', e.message);
+            console.error('⚠️ Error parseando mensaje WS:', e.message);
         }
     });
 
