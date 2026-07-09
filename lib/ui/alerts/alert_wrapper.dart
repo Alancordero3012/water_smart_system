@@ -24,6 +24,78 @@ class AlertWrapper extends ConsumerWidget {
         (previous, next) {
       if (previous == null) return;
 
+      // ── Auto-action log from SmartRulesService ───────────────────────
+      // The rules engine sets autoActionLog when it sends a command autonomously.
+      if (next.autoActionLog.isNotEmpty &&
+          next.autoActionLog != previous.autoActionLog) {
+        final severity = next.autoActionLog.startsWith('⛔') ||
+                next.autoActionLog.startsWith('🚨')
+            ? EventSeverity.critical
+            : next.autoActionLog.startsWith('⚠️')
+                ? EventSeverity.warning
+                : EventSeverity.info;
+        _fire(context, ref, next.autoActionLog, severity);
+      }
+
+      // ── Fault detection changes ───────────────────────────────────────
+      if (next.detectedFault != previous.detectedFault &&
+          next.detectedFault.isNotEmpty) {
+        final fault = next.detectedFault;
+
+        // Rotura de tubería
+        if (fault.startsWith('rotura_tuberia_')) {
+          final fuente = fault.replaceFirst('rotura_tuberia_', '').toUpperCase();
+          _fire(context, ref,
+              '⛔ Rotura/bloqueo detectado en línea $fuente — failover automático activado',
+              EventSeverity.critical);
+        }
+        // Fuga
+        else if (fault == 'fuga_detectada') {
+          _fire(context, ref,
+              '⚠️ Fuga detectada — hay flujo activo con el sistema apagado',
+              EventSeverity.warning);
+        }
+        // Presión alta
+        else if (fault.startsWith('presion_critica_alta_')) {
+          _fire(context, ref,
+              '⚠️ Presión anómala alta — bomba detenida para proteger tuberías',
+              EventSeverity.warning);
+        }
+        // Presión baja → failover
+        else if (fault.startsWith('presion_baja_')) {
+          final fuente = fault.replaceFirst('presion_baja_', '').toUpperCase();
+          _fire(context, ref,
+              '⚠️ Presión baja en $fuente — cambiando a fuente de respaldo',
+              EventSeverity.warning);
+        }
+        // Sensor inconsistente
+        else if (fault.startsWith('sensor_inconsistente_')) {
+          final fuente = fault.replaceFirst('sensor_inconsistente_', '').toUpperCase();
+          _fire(context, ref,
+              '🔧 Sensor físico inconsistente en Tanque $fuente — verificar hardware',
+              EventSeverity.warning);
+        }
+        // Agua turbia con sistema activo
+        else if (fault == 'agua_turbia_activa') {
+          _fire(context, ref,
+              '⛔ Agua turbia detectada — distribución detenida automáticamente',
+              EventSeverity.critical);
+        }
+        // Sin fuente disponible
+        else if (fault == 'sin_fuente_disponible') {
+          _fire(context, ref,
+              '🚨 CRÍTICO: Ninguna fuente disponible — sistema completamente detenido',
+              EventSeverity.critical);
+        }
+      }
+
+      // ── Failover activo → restaurado ──────────────────────────────────
+      if (previous.failoverActive && !next.failoverActive) {
+        _fire(context, ref,
+            'ℹ️ Sistema volvió a la fuente principal — failover desactivado',
+            EventSeverity.info);
+      }
+
       // ── Critical alerts — gated on bridge notification ─────────────
       if (next.fromBridgeNotification) {
         if (next.streetPressure < 10.0 && previous.streetPressure >= 10.0) {

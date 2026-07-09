@@ -52,6 +52,21 @@ mixin _$WaterSystemState {
       throw _privateConstructorUsedError; // sensor_100 (nivel 100%)
   String get activeSource => throw _privateConstructorUsedError;
 
+  /// Falla detectada actualmente por el motor de reglas.
+  /// '' = sin falla. Posibles valores:
+  /// 'rotura_tuberia_calle' | 'rotura_tuberia_lluvia'
+  /// 'fuga_detectada' | 'presion_critica_alta'
+  /// 'sensor_inconsistente_calle' | 'sensor_inconsistente_lluvia'
+  /// 'agua_turbia_activa' | 'sin_fuente_disponible' | 'failover_automatico'
+  String get detectedFault => throw _privateConstructorUsedError;
+
+  /// Última acción autónoma ejecutada (texto para el log de eventos).
+  String get autoActionLog => throw _privateConstructorUsedError;
+
+  /// True cuando el sistema está operando en la fuente de respaldo
+  /// por un failover automático (no por elección manual del usuario).
+  bool get failoverActive => throw _privateConstructorUsedError;
+
   /// True solo cuando el update viene de `agua_iot/notificaciones`.
   bool get fromBridgeNotification => throw _privateConstructorUsedError;
 
@@ -95,6 +110,9 @@ abstract class $WaterSystemStateCopyWith<$Res> {
     bool lluviaS50,
     bool lluviaS100,
     String activeSource,
+    String detectedFault,
+    String autoActionLog,
+    bool failoverActive,
     bool fromBridgeNotification,
     bool tanqueCalleVacio,
     bool tanqueLluviaVacio,
@@ -134,6 +152,9 @@ class _$WaterSystemStateCopyWithImpl<$Res, $Val extends WaterSystemState>
     Object? lluviaS50 = null,
     Object? lluviaS100 = null,
     Object? activeSource = null,
+    Object? detectedFault = null,
+    Object? autoActionLog = null,
+    Object? failoverActive = null,
     Object? fromBridgeNotification = null,
     Object? tanqueCalleVacio = null,
     Object? tanqueLluviaVacio = null,
@@ -212,6 +233,18 @@ class _$WaterSystemStateCopyWithImpl<$Res, $Val extends WaterSystemState>
                 ? _value.activeSource
                 : activeSource // ignore: cast_nullable_to_non_nullable
                       as String,
+            detectedFault: null == detectedFault
+                ? _value.detectedFault
+                : detectedFault // ignore: cast_nullable_to_non_nullable
+                      as String,
+            autoActionLog: null == autoActionLog
+                ? _value.autoActionLog
+                : autoActionLog // ignore: cast_nullable_to_non_nullable
+                      as String,
+            failoverActive: null == failoverActive
+                ? _value.failoverActive
+                : failoverActive // ignore: cast_nullable_to_non_nullable
+                      as bool,
             fromBridgeNotification: null == fromBridgeNotification
                 ? _value.fromBridgeNotification
                 : fromBridgeNotification // ignore: cast_nullable_to_non_nullable
@@ -258,6 +291,9 @@ abstract class _$$WaterSystemStateImplCopyWith<$Res>
     bool lluviaS50,
     bool lluviaS100,
     String activeSource,
+    String detectedFault,
+    String autoActionLog,
+    bool failoverActive,
     bool fromBridgeNotification,
     bool tanqueCalleVacio,
     bool tanqueLluviaVacio,
@@ -296,6 +332,9 @@ class __$$WaterSystemStateImplCopyWithImpl<$Res>
     Object? lluviaS50 = null,
     Object? lluviaS100 = null,
     Object? activeSource = null,
+    Object? detectedFault = null,
+    Object? autoActionLog = null,
+    Object? failoverActive = null,
     Object? fromBridgeNotification = null,
     Object? tanqueCalleVacio = null,
     Object? tanqueLluviaVacio = null,
@@ -374,6 +413,18 @@ class __$$WaterSystemStateImplCopyWithImpl<$Res>
             ? _value.activeSource
             : activeSource // ignore: cast_nullable_to_non_nullable
                   as String,
+        detectedFault: null == detectedFault
+            ? _value.detectedFault
+            : detectedFault // ignore: cast_nullable_to_non_nullable
+                  as String,
+        autoActionLog: null == autoActionLog
+            ? _value.autoActionLog
+            : autoActionLog // ignore: cast_nullable_to_non_nullable
+                  as String,
+        failoverActive: null == failoverActive
+            ? _value.failoverActive
+            : failoverActive // ignore: cast_nullable_to_non_nullable
+                  as bool,
         fromBridgeNotification: null == fromBridgeNotification
             ? _value.fromBridgeNotification
             : fromBridgeNotification // ignore: cast_nullable_to_non_nullable
@@ -413,6 +464,9 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
     this.lluviaS50 = false,
     this.lluviaS100 = false,
     this.activeSource = 'lluvia',
+    this.detectedFault = '',
+    this.autoActionLog = '',
+    this.failoverActive = false,
     this.fromBridgeNotification = false,
     this.tanqueCalleVacio = false,
     this.tanqueLluviaVacio = false,
@@ -488,6 +542,27 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
   @JsonKey()
   final String activeSource;
 
+  /// Falla detectada actualmente por el motor de reglas.
+  /// '' = sin falla. Posibles valores:
+  /// 'rotura_tuberia_calle' | 'rotura_tuberia_lluvia'
+  /// 'fuga_detectada' | 'presion_critica_alta'
+  /// 'sensor_inconsistente_calle' | 'sensor_inconsistente_lluvia'
+  /// 'agua_turbia_activa' | 'sin_fuente_disponible' | 'failover_automatico'
+  @override
+  @JsonKey()
+  final String detectedFault;
+
+  /// Última acción autónoma ejecutada (texto para el log de eventos).
+  @override
+  @JsonKey()
+  final String autoActionLog;
+
+  /// True cuando el sistema está operando en la fuente de respaldo
+  /// por un failover automático (no por elección manual del usuario).
+  @override
+  @JsonKey()
+  final bool failoverActive;
+
   /// True solo cuando el update viene de `agua_iot/notificaciones`.
   @override
   @JsonKey()
@@ -503,7 +578,7 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
 
   @override
   String toString() {
-    return 'WaterSystemState(rainTankLevel: $rainTankLevel, streetTankLevel: $streetTankLevel, flowRate: $flowRate, streetPressure: $streetPressure, turbidity: $turbidity, isPumpActive: $isPumpActive, isSolenoidOpen: $isSolenoidOpen, isBombaCalleActive: $isBombaCalleActive, isSolenoideCalleOpen: $isSolenoideCalleOpen, isBombaLluviaActive: $isBombaLluviaActive, isSoleLluviaOpen: $isSoleLluviaOpen, calleS0: $calleS0, calleS50: $calleS50, calleS100: $calleS100, lluviaS0: $lluviaS0, lluviaS50: $lluviaS50, lluviaS100: $lluviaS100, activeSource: $activeSource, fromBridgeNotification: $fromBridgeNotification, tanqueCalleVacio: $tanqueCalleVacio, tanqueLluviaVacio: $tanqueLluviaVacio)';
+    return 'WaterSystemState(rainTankLevel: $rainTankLevel, streetTankLevel: $streetTankLevel, flowRate: $flowRate, streetPressure: $streetPressure, turbidity: $turbidity, isPumpActive: $isPumpActive, isSolenoidOpen: $isSolenoidOpen, isBombaCalleActive: $isBombaCalleActive, isSolenoideCalleOpen: $isSolenoideCalleOpen, isBombaLluviaActive: $isBombaLluviaActive, isSoleLluviaOpen: $isSoleLluviaOpen, calleS0: $calleS0, calleS50: $calleS50, calleS100: $calleS100, lluviaS0: $lluviaS0, lluviaS50: $lluviaS50, lluviaS100: $lluviaS100, activeSource: $activeSource, detectedFault: $detectedFault, autoActionLog: $autoActionLog, failoverActive: $failoverActive, fromBridgeNotification: $fromBridgeNotification, tanqueCalleVacio: $tanqueCalleVacio, tanqueLluviaVacio: $tanqueLluviaVacio)';
   }
 
   @override
@@ -546,6 +621,12 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
                 other.lluviaS100 == lluviaS100) &&
             (identical(other.activeSource, activeSource) ||
                 other.activeSource == activeSource) &&
+            (identical(other.detectedFault, detectedFault) ||
+                other.detectedFault == detectedFault) &&
+            (identical(other.autoActionLog, autoActionLog) ||
+                other.autoActionLog == autoActionLog) &&
+            (identical(other.failoverActive, failoverActive) ||
+                other.failoverActive == failoverActive) &&
             (identical(other.fromBridgeNotification, fromBridgeNotification) ||
                 other.fromBridgeNotification == fromBridgeNotification) &&
             (identical(other.tanqueCalleVacio, tanqueCalleVacio) ||
@@ -576,6 +657,9 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
     lluviaS50,
     lluviaS100,
     activeSource,
+    detectedFault,
+    autoActionLog,
+    failoverActive,
     fromBridgeNotification,
     tanqueCalleVacio,
     tanqueLluviaVacio,
@@ -618,6 +702,9 @@ abstract class _WaterSystemState implements WaterSystemState {
     final bool lluviaS50,
     final bool lluviaS100,
     final String activeSource,
+    final String detectedFault,
+    final String autoActionLog,
+    final bool failoverActive,
     final bool fromBridgeNotification,
     final bool tanqueCalleVacio,
     final bool tanqueLluviaVacio,
@@ -664,6 +751,24 @@ abstract class _WaterSystemState implements WaterSystemState {
   bool get lluviaS100; // sensor_100 (nivel 100%)
   @override
   String get activeSource;
+
+  /// Falla detectada actualmente por el motor de reglas.
+  /// '' = sin falla. Posibles valores:
+  /// 'rotura_tuberia_calle' | 'rotura_tuberia_lluvia'
+  /// 'fuga_detectada' | 'presion_critica_alta'
+  /// 'sensor_inconsistente_calle' | 'sensor_inconsistente_lluvia'
+  /// 'agua_turbia_activa' | 'sin_fuente_disponible' | 'failover_automatico'
+  @override
+  String get detectedFault;
+
+  /// Última acción autónoma ejecutada (texto para el log de eventos).
+  @override
+  String get autoActionLog;
+
+  /// True cuando el sistema está operando en la fuente de respaldo
+  /// por un failover automático (no por elección manual del usuario).
+  @override
+  bool get failoverActive;
 
   /// True solo cuando el update viene de `agua_iot/notificaciones`.
   @override

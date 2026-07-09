@@ -141,6 +141,195 @@ const TOPIC_MAP = {
     'agua_iot/actuadores/solenoide_lluvia' : 7,
 };
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🧠 MOTOR DE REGLAS INTELIGENTES (Backend — actúa incluso sin Flutter abierto)
+//
+// PRINCIPIO: Si falla la fuente activa → cambiar a la fuente de respaldo.
+//            Solo apagar todo si AMBAS fuentes no están disponibles.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const sistemaEstado = {
+    // Actuadores (sincronizados por echos MQTT)
+    bombaCalle    : false,
+    solenoideCalle: false,
+    bombaLluvia   : false,
+    soleLluvia    : false,
+    // Sensores
+    presion       : 0,
+    flujo         : 0,
+    turbidez      : 0,
+    tankCalle     : 0,    // nivel % (0 | 50 | 100)
+    tankLluvia    : 0,
+    // Tracking de tiempo para reglas basadas en duración
+    flujoZeroDesde   : null,  // Date | null
+    presionBajaDesde : null,  // Date | null
+    lastFailover     : null,  // Date | null
+    failoverCooldownMs: 90000, // 90s mínimo entre failovers
+    // Umbrales
+    MIN_PRESION    : 10,   // PSI
+    MAX_PRESION    : 45,   // PSI
+    MAX_TURBIDEZ   : 50,   // NTU
+    MIN_FLUJO_FUGA : 0.5,  // L/min — fuga si sistema apagado
+    MIN_TANK_NIVEL : 15,   // % — por debajo = fuente no usable
+    WINDOW_ROTURA  : 30000,// 30s de flujo cero = rotura
+    WINDOW_PRESION : 20000,// 20s de presión baja = failover
+};
+
+// ── Sincronizar estado desde mensajes MQTT ───────────────────────────────────
+function syncEstado(topic, valor) {
+    if (topic === 'agua_iot/sensores/presion' || topic === 'agua_iot/sensores_presion/1')
+        sistemaEstado.presion = valor;
+    else if (topic === 'agua_iot/sensores/flujo' || topic === 'agua_iot/sensores_presion/2')
+        sistemaEstado.flujo = valor;
+    else if (topic === 'agua_iot/calidad/turbidez')
+        sistemaEstado.turbidez = valor;
+    else if (topic === 'agua_iot/tanque_calle/nivel' || topic === 'agua_iot/nivel/lectura_2')
+        sistemaEstado.tankCalle = valor;
+    else if (topic === 'agua_iot/tanque_lluvia/nivel' || topic === 'agua_iot/nivel/lectura')
+        sistemaEstado.tankLluvia = valor;
+    else if (topic === 'agua_iot/actuadores/bomba_calle')   sistemaEstado.bombaCalle     = valor === 1;
+    else if (topic === 'agua_iot/actuadores/solenoide_calle') sistemaEstado.solenoideCalle = valor === 1;
+    else if (topic === 'agua_iot/actuadores/bomba_lluvia')  sistemaEstado.bombaLluvia    = valor === 1;
+    else if (topic === 'agua_iot/actuadores/solenoide_lluvia') sistemaEstado.soleLluvia   = valor === 1;
+    // Legacy actuadores
+    else if (topic === 'agua_iot/actuadores/bomba')     sistemaEstado.bombaCalle     = valor === 1;
+    else if (topic === 'agua_iot/actuadores/solenoide') sistemaEstado.solenoideCalle = valor === 1;
+}
+
+// ── Publicar comando automático y notificación ───────────────────────────────
+function autoComando(topicActuador, valor, razon) {
+    console.log(`🤖 AUTO-CMD: ${topicActuador} = ${valor} [${razon}]`);
+    client.publish(topicActuador, String(valor), { qos: 1, retain: true });
+}
+
+function autoNotificacion(tipo, datos = {}) {
+    const notif = JSON.stringify({ type: tipo, automated: true, ...datos });
+    client.publish('agua_iot/notificaciones', notif, { qos: 1 });
+    console.log(`🔔 AUTO-NOTIF: ${tipo}`, datos);
+}
+
+// ── Determinar fuente activa ─────────────────────────────────────────────────
+function getFuenteActiva() {
+    if (sistemaEstado.bombaCalle && sistemaEstado.solenoideCalle)   return 'calle';
+    if (sistemaEstado.bombaLluvia && sistemaEstado.soleLluvia)      return 'lluvia';
+    return null; // Sistema apagado
+}
+
+// ── Failover a la otra fuente ────────────────────────────────────────────────
+function ejecutarFailover(razon) {
+    const ahora = Date.now();
+    if (sistemaEstado.lastFailover &&
+        ahora - sistemaEstado.lastFailover < sistemaEstado.failoverCooldownMs) {
+        console.log(`⏸ Failover bloqueado por cooldown (${Math.round((ahora - sistemaEstado.lastFailover)/1000)}s)`);
+        return;
+    }
+
+    const fuenteActual = getFuenteActiva();
+    if (!fuenteActual) return; // Sistema ya apagado
+
+    const fuenteRespaldo = fuenteActual === 'calle' ? 'lluvia' : 'calle';
+    const nivelRespaldo  = fuenteRespaldo === 'lluvia'
+        ? sistemaEstado.tankLluvia
+        : sistemaEstado.tankCalle;
+
+    if (nivelRespaldo <= sistemaEstado.MIN_TANK_NIVEL) {
+        // ── Sin respaldo disponible → apagar todo ────────────────────────
+        console.log(`🚨 Sin fuente de respaldo (nivel ${nivelRespaldo}%) — apagando todo`);
+        autoComando('agua_iot/actuadores/bomba_calle',      0, razon);
+        autoComando('agua_iot/actuadores/solenoide_calle',  0, razon);
+        autoComando('agua_iot/actuadores/bomba_lluvia',     0, razon);
+        autoComando('agua_iot/actuadores/solenoide_lluvia', 0, razon);
+        autoNotificacion('sin_fuente_disponible', { razon });
+        return;
+    }
+
+    // ── Failover a fuente de respaldo ────────────────────────────────────
+    console.log(`🔄 FAILOVER: ${fuenteActual} → ${fuenteRespaldo} | Razón: ${razon}`);
+
+    // Apagar fuente actual
+    autoComando(`agua_iot/actuadores/bomba_${fuenteActual}`,      0, razon);
+    autoComando(`agua_iot/actuadores/solenoide_${fuenteActual}`,  0, razon);
+
+    // Encender fuente de respaldo
+    autoComando(`agua_iot/actuadores/bomba_${fuenteRespaldo}`,     1, razon);
+    autoComando(`agua_iot/actuadores/solenoide_${fuenteRespaldo}`, 1, razon);
+
+    autoNotificacion('failover_automatico', {
+        de: fuenteActual, a: fuenteRespaldo, razon
+    });
+
+    // Reset contadores de tiempo
+    sistemaEstado.flujoZeroDesde   = null;
+    sistemaEstado.presionBajaDesde = null;
+    sistemaEstado.lastFailover     = ahora;
+}
+
+// ── Evaluar todas las reglas ─────────────────────────────────────────────────
+function evaluarReglasInteligentes(topic) {
+    const s   = sistemaEstado;
+    const now = Date.now();
+    const sistemaActivo = getFuenteActiva() !== null;
+
+    // ── Regla 7: Agua turbia con distribución activa ──────────────────────
+    if (s.turbidez > s.MAX_TURBIDEZ) {
+        const distribuyendo = s.solenoideCalle || s.soleLluvia;
+        if (distribuyendo) {
+            console.log(`⛔ Agua turbia (${s.turbidez} NTU) — cerrando solenoides`);
+            autoComando('agua_iot/actuadores/solenoide_calle',  0, 'agua_turbia');
+            autoComando('agua_iot/actuadores/solenoide_lluvia', 0, 'agua_turbia');
+            autoNotificacion('agua_turbia_activa', { turbidez: s.turbidez });
+        }
+        return; // No evaluar otras reglas si el agua está sucia
+    }
+
+    // ── Regla 4: Presión anómala ALTA ─────────────────────────────────────
+    if (sistemaActivo && s.presion > s.MAX_PRESION) {
+        const fuenteActiva = getFuenteActiva();
+        console.log(`⚠️ Presión muy alta (${s.presion} PSI) — deteniendo bomba ${fuenteActiva}`);
+        autoComando(`agua_iot/actuadores/bomba_${fuenteActiva}`, 0, 'presion_alta');
+        autoNotificacion('presion_critica_alta', { presion: s.presion, fuente: fuenteActiva });
+        return;
+    }
+
+    // ── Regla 2: Fuga (flujo activo con sistema apagado) ──────────────────
+    if (!sistemaActivo && s.flujo > s.MIN_FLUJO_FUGA) {
+        autoNotificacion('fuga_detectada', { flujo: s.flujo });
+        return;
+    }
+
+    if (!sistemaActivo) return; // Resto de reglas requieren sistema activo
+
+    // ── Regla 1: Rotura de tubería (flujo cero con sistema activo 30s) ────
+    const solAbierto = s.solenoideCalle || s.soleLluvia;
+    if (solAbierto && s.flujo < 0.1) {
+        if (!s.flujoZeroDesde) {
+            s.flujoZeroDesde = now;
+        } else if (now - s.flujoZeroDesde >= s.WINDOW_ROTURA) {
+            const fuenteActiva = getFuenteActiva();
+            console.log(`⛔ Flujo cero ${Math.round((now-s.flujoZeroDesde)/1000)}s — rotura en ${fuenteActiva}`);
+            autoNotificacion('rotura_tuberia', { fuente: fuenteActiva });
+            ejecutarFailover(`rotura_tuberia_${fuenteActiva}`);
+        }
+    } else {
+        s.flujoZeroDesde = null; // Reset si flujo volvió
+    }
+
+    // ── Regla 3: Presión baja persistente (20s) → failover ────────────────
+    if (s.presion > 0 && s.presion < s.MIN_PRESION) {
+        if (!s.presionBajaDesde) {
+            s.presionBajaDesde = now;
+        } else if (now - s.presionBajaDesde >= s.WINDOW_PRESION) {
+            const fuenteActiva = getFuenteActiva();
+            console.log(`⚠️ Presión baja ${Math.round((now-s.presionBajaDesde)/1000)}s — failover desde ${fuenteActiva}`);
+            ejecutarFailover(`presion_baja_${fuenteActiva}`);
+        }
+    } else {
+        s.presionBajaDesde = null;
+    }
+}
+
+// ─── Fin del motor de reglas ─────────────────────────────────────────────────
+
 // --- Lógica del Puente (MQTT -> MySQL) ---
 client.on('message', async (topic, message) => {
     try {
@@ -173,6 +362,12 @@ client.on('message', async (topic, message) => {
                 ws.send(JSON.stringify({ topic, value: valor }));
             }
         });
+
+        // --- 🧠 Motor de Reglas Inteligentes ---
+        // 1. Actualizar el estado interno del motor con el nuevo valor
+        syncEstado(topic, valor);
+        // 2. Evaluar todas las reglas contra el estado actualizado
+        evaluarReglasInteligentes(topic);
 
         // --- Evaluación de umbrales y notificaciones ---
         // Publica a agua_iot/notificaciones cuando se detecta un valor crítico.

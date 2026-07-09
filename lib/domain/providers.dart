@@ -7,6 +7,7 @@ import '../data/services/mqtt_service.dart';
 import '../data/services/mock_water_service.dart';
 import '../data/services/bridge_health_service.dart';
 import '../data/services/local_bridge_repository.dart';
+import '../data/services/preferences_service.dart';
 
 // Toggle para Modo Simulación
 final useSimulationProvider = StateProvider<bool>(
@@ -69,15 +70,24 @@ final waterSystemStreamProvider = StreamProvider<WaterSystemState>((ref) {
   return repository.stateStream;
 });
 
+// ── Smart Rules Provider ─────────────────────────────────────────────────────
+// Definido aquí (no en smart_rules_service.dart) para evitar dependencia circular
+// entre providers.dart ↔ smart_rules_service.dart.
+final smartRulesProvider = Provider<SmartRulesService>((ref) {
+  final prefs = ref.watch(preferencesServiceProvider);
+  final repo  = ref.watch(waterDataRepositoryProvider);
+  return SmartRulesService(prefs, repo);
+});
+
 // Estado procesado (con reglas inteligentes aplicadas)
 final processedSystemStateProvider = Provider<WaterSystemState>((ref) {
   final rawStateAsync = ref.watch(waterSystemStreamProvider);
-  final rulesService = ref.read(smartRulesProvider);
+  final rulesService  = ref.watch(smartRulesProvider);
 
   return rawStateAsync.when(
-    data: (state) => rulesService.evaluateRules(state),
-    loading: () => const WaterSystemState(),
-    error: (_, __) => const WaterSystemState(),
+    data:    (state) => rulesService.evaluateRules(state),
+    loading: ()      => const WaterSystemState(),
+    error:   (_, __) => const WaterSystemState(),
   );
 });
 

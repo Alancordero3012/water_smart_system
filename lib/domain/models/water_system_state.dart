@@ -37,6 +37,21 @@ class WaterSystemState with _$WaterSystemState {
 
     @Default('lluvia') String activeSource,
 
+    /// Falla detectada actualmente por el motor de reglas.
+    /// '' = sin falla. Posibles valores:
+    /// 'rotura_tuberia_calle' | 'rotura_tuberia_lluvia'
+    /// 'fuga_detectada' | 'presion_critica_alta'
+    /// 'sensor_inconsistente_calle' | 'sensor_inconsistente_lluvia'
+    /// 'agua_turbia_activa' | 'sin_fuente_disponible' | 'failover_automatico'
+    @Default('') String detectedFault,
+
+    /// Última acción autónoma ejecutada (texto para el log de eventos).
+    @Default('') String autoActionLog,
+
+    /// True cuando el sistema está operando en la fuente de respaldo
+    /// por un failover automático (no por elección manual del usuario).
+    @Default(false) bool failoverActive,
+
     /// True solo cuando el update viene de `agua_iot/notificaciones`.
     @Default(false) bool fromBridgeNotification,
 
