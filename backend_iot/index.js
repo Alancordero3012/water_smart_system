@@ -120,16 +120,25 @@ const TOPIC_MAP = {
     'agua_iot/calidad/turbidez':   5,  // Turbidez
     'agua_iot/actuadores/bomba':   6,  // Estado Bomba (0/1)
     'agua_iot/actuadores/solenoide': 7, // Estado Solenoide (0/1)
-    // ── Tópicos ESP32 hardware real ───────────────────────────────────────────
+    // ── Tópicos ESP32 hardware real — niveles calculados ─────────────────────
     'agua_iot/tanque_lluvia/nivel': 3,
     'agua_iot/tanque_calle/nivel':  4,
     'agua_iot/sensores/presion':    1,
     'agua_iot/sensores/flujo':      2,
-    // Actuadores ESP32_WaterSmart_Alan (mismos IDs que legacy)
+    // ── Tópicos ESP32 hardware real — sensores individuales reed switch ───────
+    // Tanque Calle: sensor_0 = vacío, sensor_50 = mitad, sensor_100 = lleno
+    'agua_iot/tanque_calle/sensor_0'   : 8,
+    'agua_iot/tanque_calle/sensor_50'  : 9,
+    'agua_iot/tanque_calle/sensor_100' : 10,
+    // Tanque Lluvia: misma lógica
+    'agua_iot/tanque_lluvia/sensor_0'  : 11,
+    'agua_iot/tanque_lluvia/sensor_50' : 12,
+    'agua_iot/tanque_lluvia/sensor_100': 13,
+    // ── Actuadores ESP32_WaterSmart_Alan (mismos IDs que legacy) ─────────────
     'agua_iot/actuadores/bomba_calle'      : 6,
     'agua_iot/actuadores/solenoide_calle'  : 7,
-    'agua_iot/actuadores/bomba_lluvia'     : 6,  // mismo ID que bomba
-    'agua_iot/actuadores/solenoide_lluvia' : 7,  // mismo ID que solenoide
+    'agua_iot/actuadores/bomba_lluvia'     : 6,
+    'agua_iot/actuadores/solenoide_lluvia' : 7,
 };
 
 // --- Lógica del Puente (MQTT -> MySQL) ---
@@ -168,16 +177,34 @@ client.on('message', async (topic, message) => {
         // --- Evaluación de umbrales y notificaciones ---
         // Publica a agua_iot/notificaciones cuando se detecta un valor crítico.
         // Flutter escucha este tópico para disparar alertas verificadas por el bridge.
+
+        // 🔔 Turbidez crítica
         if (topic === 'agua_iot/calidad/turbidez' && valor > 50) {
             const notif = JSON.stringify({ type: 'turbidez_critica', value: valor });
             client.publish('agua_iot/notificaciones', notif, { qos: 1 });
             console.log(`🔔 Notificación enviada → turbidez_critica: ${valor} NTU`);
         }
 
-        if (topic === 'agua_iot/sensores_presion/1' && valor < 10) {
+        // 🔔 Presión baja — cubre tanto el simulador (legacy) como el ESP32 real
+        if (
+            (topic === 'agua_iot/sensores_presion/1' || topic === 'agua_iot/sensores/presion')
+            && valor < 10
+        ) {
             const notif = JSON.stringify({ type: 'baja_presion', value: valor });
             client.publish('agua_iot/notificaciones', notif, { qos: 1 });
             console.log(`🔔 Notificación enviada → baja_presion: ${valor} PSI`);
+        }
+
+        // 🔔 Tanque vacío — se dispara cuando el nivel calculado llega a 0
+        if (topic === 'agua_iot/tanque_calle/nivel' && valor === 0) {
+            const notif = JSON.stringify({ type: 'tanque_calle_vacio', value: valor });
+            client.publish('agua_iot/notificaciones', notif, { qos: 1 });
+            console.log(`🔔 Notificación enviada → tanque_calle_vacio`);
+        }
+        if (topic === 'agua_iot/tanque_lluvia/nivel' && valor === 0) {
+            const notif = JSON.stringify({ type: 'tanque_lluvia_vacio', value: valor });
+            client.publish('agua_iot/notificaciones', notif, { qos: 1 });
+            console.log(`🔔 Notificación enviada → tanque_lluvia_vacio`);
         }
 
     } catch (error) {

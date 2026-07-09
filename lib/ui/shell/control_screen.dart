@@ -455,12 +455,12 @@ class _BombaSection extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withOpacity(0.07),
+          color: Colors.white.withValues(alpha: 0.07),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.45),
+            color: Colors.black.withValues(alpha: 0.45),
             blurRadius: 20,
             offset: const Offset(0, 6),
           ),
@@ -477,7 +477,7 @@ class _BombaSection extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 8,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   letterSpacing: 2,
                   fontFamily: 'monospace',
                 ),
@@ -485,7 +485,7 @@ class _BombaSection extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -493,7 +493,7 @@ class _BombaSection extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 7,
                     fontFamily: 'monospace',
-                    color: Colors.white.withOpacity(0.18),
+                    color: Colors.white.withValues(alpha: 0.18),
                     letterSpacing: 0.8,
                   ),
                 ),
@@ -518,7 +518,7 @@ class _BombaSection extends StatelessWidget {
                     gradient: LinearGradient(
                       colors: [
                         Colors.transparent,
-                        Colors.white.withOpacity(0.08),
+                        Colors.white.withValues(alpha: 0.08),
                         Colors.transparent,
                       ],
                     ),
@@ -557,9 +557,9 @@ class _SpecBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
+        color: Colors.white.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -568,7 +568,7 @@ class _SpecBadge extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 7,
-              color: Colors.white.withOpacity(0.25),
+              color: Colors.white.withValues(alpha: 0.25),
               letterSpacing: 1,
               fontFamily: 'monospace',
             ),
@@ -579,7 +579,7 @@ class _SpecBadge extends StatelessWidget {
             style: TextStyle(
               fontSize: 9,
               fontWeight: FontWeight.w800,
-              color: Colors.white.withOpacity(0.55),
+              color: Colors.white.withValues(alpha: 0.55),
               fontFamily: 'monospace',
               letterSpacing: 0.5,
             ),

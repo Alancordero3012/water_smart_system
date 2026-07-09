@@ -1,13 +1,19 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 
-/// Compact animated tank gauge with wave effect and integrated info.
+/// Compact animated tank gauge with wave effect, reed-switch LEDs, and
+/// an optional empty-tank warning.
 class AnimatedTankWidget extends StatefulWidget {
   final String label;
   final double level; // 0-100
   final Color color;
   final IconData icon;
   final double maxVolumeLiters;
+
+  // Individual reed-switch sensor states (null = hardware not connected yet)
+  final bool? sensor0;    // true = agua detectada en S0  (0 %)
+  final bool? sensor50;   // true = agua detectada en S50 (50%)
+  final bool? sensor100;  // true = agua detectada en S100 (100%)
 
   const AnimatedTankWidget({
     super.key,
@@ -16,6 +22,9 @@ class AnimatedTankWidget extends StatefulWidget {
     required this.color,
     required this.icon,
     this.maxVolumeLiters = 1000,
+    this.sensor0,
+    this.sensor50,
+    this.sensor100,
   });
 
   @override
@@ -55,16 +64,25 @@ class _AnimatedTankWidgetState extends State<AnimatedTankWidget>
       statusColor = Colors.redAccent;
     }
 
+    // Only show sensor row when at least one value is reported by hardware
+    final hasSensors = widget.sensor0 != null ||
+        widget.sensor50 != null ||
+        widget.sensor100 != null;
+    final isEmpty = safeLevel == 0;
+
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A2E),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: statusColor.withAlpha(50), width: 1),
+        border: Border.all(
+          color: isEmpty ? Colors.redAccent.withAlpha(80) : statusColor.withAlpha(50),
+          width: 1,
+        ),
       ),
       child: Column(
         children: [
-          // Header with label + reading inline
+          // Header with label + volume
           Row(
             children: [
               Icon(widget.icon, color: statusColor, size: 14),
@@ -81,14 +99,18 @@ class _AnimatedTankWidgetState extends State<AnimatedTankWidget>
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Text(
-                '~$volumeL L',
-                style: TextStyle(
-                  fontSize: 9,
-                  color: Colors.white.withAlpha(80),
-                  fontFamily: 'monospace',
-                ),
-              ),
+              if (!isEmpty)
+                Text(
+                  '~$volumeL L',
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: Colors.white.withAlpha(80),
+                    fontFamily: 'monospace',
+                  ),
+                )
+              else
+                // Pulsing VACÍO badge
+                _EmptyBadge(),
             ],
           ),
           const SizedBox(height: 4),
@@ -125,8 +147,126 @@ class _AnimatedTankWidgetState extends State<AnimatedTankWidget>
               height: 1,
             ),
           ),
+
+          // Reed-switch LED row (only visible when hardware is connected)
+          if (hasSensors) ...[
+            const SizedBox(height: 5),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _SensorDot(label: 'S0',  active: widget.sensor0),
+                const SizedBox(width: 4),
+                _SensorDot(label: 'S50', active: widget.sensor50),
+                const SizedBox(width: 4),
+                _SensorDot(label: 'S100', active: widget.sensor100),
+              ],
+            ),
+          ],
         ],
       ),
+    );
+  }
+}
+
+// ── Empty tank pulsing badge ─────────────────────────────────────────────────
+
+class _EmptyBadge extends StatefulWidget {
+  @override
+  State<_EmptyBadge> createState() => _EmptyBadgeState();
+}
+
+class _EmptyBadgeState extends State<_EmptyBadge>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _anim = Tween<double>(begin: 0.4, end: 1.0).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (_, __) => Opacity(
+        opacity: _anim.value,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.redAccent.withAlpha(25),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: Colors.redAccent.withAlpha(80), width: 1),
+          ),
+          child: const Text(
+            'VACÍO',
+            style: TextStyle(
+              fontSize: 7,
+              fontWeight: FontWeight.w800,
+              color: Colors.redAccent,
+              letterSpacing: 0.8,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Reed-switch sensor LED dot ────────────────────────────────────────────────
+
+class _SensorDot extends StatelessWidget {
+  final String label;
+  final bool? active; // null = no hardware data yet
+
+  const _SensorDot({required this.label, required this.active});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = active == null
+        ? Colors.white24          // no data
+        : active!
+            ? const Color(0xFF00E676)  // agua detectada
+            : Colors.white24;          // seco
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            boxShadow: active == true
+                ? [BoxShadow(color: color.withAlpha(160), blurRadius: 5)]
+                : null,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 6,
+            color: color,
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }

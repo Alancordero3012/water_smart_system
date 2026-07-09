@@ -40,6 +40,21 @@ class AlertWrapper extends ConsumerWidget {
             EventSeverity.critical,
           );
         }
+        // Tanque físicamente vacío (confirmado por reed switch S0 del ESP32)
+        if (next.tanqueCalleVacio && !previous.tanqueCalleVacio) {
+          _fire(
+            context, ref,
+            '🔴  Tanque CALLE vacío confirmado por sensor físico',
+            EventSeverity.critical,
+          );
+        }
+        if (next.tanqueLluviaVacio && !previous.tanqueLluviaVacio) {
+          _fire(
+            context, ref,
+            '🔴  Tanque LLUVIA vacío confirmado por sensor físico',
+            EventSeverity.critical,
+          );
+        }
         return; // Skip threshold-based logic for bridge-notification events
       }
 

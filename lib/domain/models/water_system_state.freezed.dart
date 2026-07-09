@@ -34,11 +34,30 @@ mixin _$WaterSystemState {
   bool get isSolenoideCalleOpen =>
       throw _privateConstructorUsedError; // Fuente Lluvia — bomba_lluvia + solenoide_lluvia
   bool get isBombaLluviaActive => throw _privateConstructorUsedError;
-  bool get isSoleLluviaOpen => throw _privateConstructorUsedError;
+  bool get isSoleLluviaOpen =>
+      throw _privateConstructorUsedError; // —— Reed switches individuales Tanque Calle (IDs 8–10) ——
+  // true = sensor detecta agua (LOW en el ESP32)
+  bool get calleS0 =>
+      throw _privateConstructorUsedError; // sensor_0   (nivel 0%)
+  bool get calleS50 =>
+      throw _privateConstructorUsedError; // sensor_50  (nivel 50%)
+  bool get calleS100 =>
+      throw _privateConstructorUsedError; // sensor_100 (nivel 100%)
+  // —— Reed switches individuales Tanque Lluvia (IDs 11–13) ——
+  bool get lluviaS0 =>
+      throw _privateConstructorUsedError; // sensor_0   (nivel 0%)
+  bool get lluviaS50 =>
+      throw _privateConstructorUsedError; // sensor_50  (nivel 50%)
+  bool get lluviaS100 =>
+      throw _privateConstructorUsedError; // sensor_100 (nivel 100%)
   String get activeSource => throw _privateConstructorUsedError;
 
   /// True solo cuando el update viene de `agua_iot/notificaciones`.
   bool get fromBridgeNotification => throw _privateConstructorUsedError;
+
+  /// Alertas de tanque vacío disparadas por el bridge.
+  bool get tanqueCalleVacio => throw _privateConstructorUsedError;
+  bool get tanqueLluviaVacio => throw _privateConstructorUsedError;
 
   /// Serializes this WaterSystemState to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -69,8 +88,16 @@ abstract class $WaterSystemStateCopyWith<$Res> {
     bool isSolenoideCalleOpen,
     bool isBombaLluviaActive,
     bool isSoleLluviaOpen,
+    bool calleS0,
+    bool calleS50,
+    bool calleS100,
+    bool lluviaS0,
+    bool lluviaS50,
+    bool lluviaS100,
     String activeSource,
     bool fromBridgeNotification,
+    bool tanqueCalleVacio,
+    bool tanqueLluviaVacio,
   });
 }
 
@@ -100,8 +127,16 @@ class _$WaterSystemStateCopyWithImpl<$Res, $Val extends WaterSystemState>
     Object? isSolenoideCalleOpen = null,
     Object? isBombaLluviaActive = null,
     Object? isSoleLluviaOpen = null,
+    Object? calleS0 = null,
+    Object? calleS50 = null,
+    Object? calleS100 = null,
+    Object? lluviaS0 = null,
+    Object? lluviaS50 = null,
+    Object? lluviaS100 = null,
     Object? activeSource = null,
     Object? fromBridgeNotification = null,
+    Object? tanqueCalleVacio = null,
+    Object? tanqueLluviaVacio = null,
   }) {
     return _then(
       _value.copyWith(
@@ -149,6 +184,30 @@ class _$WaterSystemStateCopyWithImpl<$Res, $Val extends WaterSystemState>
                 ? _value.isSoleLluviaOpen
                 : isSoleLluviaOpen // ignore: cast_nullable_to_non_nullable
                       as bool,
+            calleS0: null == calleS0
+                ? _value.calleS0
+                : calleS0 // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            calleS50: null == calleS50
+                ? _value.calleS50
+                : calleS50 // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            calleS100: null == calleS100
+                ? _value.calleS100
+                : calleS100 // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            lluviaS0: null == lluviaS0
+                ? _value.lluviaS0
+                : lluviaS0 // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            lluviaS50: null == lluviaS50
+                ? _value.lluviaS50
+                : lluviaS50 // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            lluviaS100: null == lluviaS100
+                ? _value.lluviaS100
+                : lluviaS100 // ignore: cast_nullable_to_non_nullable
+                      as bool,
             activeSource: null == activeSource
                 ? _value.activeSource
                 : activeSource // ignore: cast_nullable_to_non_nullable
@@ -156,6 +215,14 @@ class _$WaterSystemStateCopyWithImpl<$Res, $Val extends WaterSystemState>
             fromBridgeNotification: null == fromBridgeNotification
                 ? _value.fromBridgeNotification
                 : fromBridgeNotification // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            tanqueCalleVacio: null == tanqueCalleVacio
+                ? _value.tanqueCalleVacio
+                : tanqueCalleVacio // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            tanqueLluviaVacio: null == tanqueLluviaVacio
+                ? _value.tanqueLluviaVacio
+                : tanqueLluviaVacio // ignore: cast_nullable_to_non_nullable
                       as bool,
           )
           as $Val,
@@ -184,8 +251,16 @@ abstract class _$$WaterSystemStateImplCopyWith<$Res>
     bool isSolenoideCalleOpen,
     bool isBombaLluviaActive,
     bool isSoleLluviaOpen,
+    bool calleS0,
+    bool calleS50,
+    bool calleS100,
+    bool lluviaS0,
+    bool lluviaS50,
+    bool lluviaS100,
     String activeSource,
     bool fromBridgeNotification,
+    bool tanqueCalleVacio,
+    bool tanqueLluviaVacio,
   });
 }
 
@@ -214,8 +289,16 @@ class __$$WaterSystemStateImplCopyWithImpl<$Res>
     Object? isSolenoideCalleOpen = null,
     Object? isBombaLluviaActive = null,
     Object? isSoleLluviaOpen = null,
+    Object? calleS0 = null,
+    Object? calleS50 = null,
+    Object? calleS100 = null,
+    Object? lluviaS0 = null,
+    Object? lluviaS50 = null,
+    Object? lluviaS100 = null,
     Object? activeSource = null,
     Object? fromBridgeNotification = null,
+    Object? tanqueCalleVacio = null,
+    Object? tanqueLluviaVacio = null,
   }) {
     return _then(
       _$WaterSystemStateImpl(
@@ -263,6 +346,30 @@ class __$$WaterSystemStateImplCopyWithImpl<$Res>
             ? _value.isSoleLluviaOpen
             : isSoleLluviaOpen // ignore: cast_nullable_to_non_nullable
                   as bool,
+        calleS0: null == calleS0
+            ? _value.calleS0
+            : calleS0 // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        calleS50: null == calleS50
+            ? _value.calleS50
+            : calleS50 // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        calleS100: null == calleS100
+            ? _value.calleS100
+            : calleS100 // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        lluviaS0: null == lluviaS0
+            ? _value.lluviaS0
+            : lluviaS0 // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        lluviaS50: null == lluviaS50
+            ? _value.lluviaS50
+            : lluviaS50 // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        lluviaS100: null == lluviaS100
+            ? _value.lluviaS100
+            : lluviaS100 // ignore: cast_nullable_to_non_nullable
+                  as bool,
         activeSource: null == activeSource
             ? _value.activeSource
             : activeSource // ignore: cast_nullable_to_non_nullable
@@ -270,6 +377,14 @@ class __$$WaterSystemStateImplCopyWithImpl<$Res>
         fromBridgeNotification: null == fromBridgeNotification
             ? _value.fromBridgeNotification
             : fromBridgeNotification // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        tanqueCalleVacio: null == tanqueCalleVacio
+            ? _value.tanqueCalleVacio
+            : tanqueCalleVacio // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        tanqueLluviaVacio: null == tanqueLluviaVacio
+            ? _value.tanqueLluviaVacio
+            : tanqueLluviaVacio // ignore: cast_nullable_to_non_nullable
                   as bool,
       ),
     );
@@ -291,8 +406,16 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
     this.isSolenoideCalleOpen = false,
     this.isBombaLluviaActive = false,
     this.isSoleLluviaOpen = false,
+    this.calleS0 = false,
+    this.calleS50 = false,
+    this.calleS100 = false,
+    this.lluviaS0 = false,
+    this.lluviaS50 = false,
+    this.lluviaS100 = false,
     this.activeSource = 'lluvia',
     this.fromBridgeNotification = false,
+    this.tanqueCalleVacio = false,
+    this.tanqueLluviaVacio = false,
   });
 
   factory _$WaterSystemStateImpl.fromJson(Map<String, dynamic> json) =>
@@ -334,6 +457,33 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
   @override
   @JsonKey()
   final bool isSoleLluviaOpen;
+  // —— Reed switches individuales Tanque Calle (IDs 8–10) ——
+  // true = sensor detecta agua (LOW en el ESP32)
+  @override
+  @JsonKey()
+  final bool calleS0;
+  // sensor_0   (nivel 0%)
+  @override
+  @JsonKey()
+  final bool calleS50;
+  // sensor_50  (nivel 50%)
+  @override
+  @JsonKey()
+  final bool calleS100;
+  // sensor_100 (nivel 100%)
+  // —— Reed switches individuales Tanque Lluvia (IDs 11–13) ——
+  @override
+  @JsonKey()
+  final bool lluviaS0;
+  // sensor_0   (nivel 0%)
+  @override
+  @JsonKey()
+  final bool lluviaS50;
+  // sensor_50  (nivel 50%)
+  @override
+  @JsonKey()
+  final bool lluviaS100;
+  // sensor_100 (nivel 100%)
   @override
   @JsonKey()
   final String activeSource;
@@ -343,9 +493,17 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
   @JsonKey()
   final bool fromBridgeNotification;
 
+  /// Alertas de tanque vacío disparadas por el bridge.
+  @override
+  @JsonKey()
+  final bool tanqueCalleVacio;
+  @override
+  @JsonKey()
+  final bool tanqueLluviaVacio;
+
   @override
   String toString() {
-    return 'WaterSystemState(rainTankLevel: $rainTankLevel, streetTankLevel: $streetTankLevel, flowRate: $flowRate, streetPressure: $streetPressure, turbidity: $turbidity, isPumpActive: $isPumpActive, isSolenoidOpen: $isSolenoidOpen, isBombaCalleActive: $isBombaCalleActive, isSolenoideCalleOpen: $isSolenoideCalleOpen, isBombaLluviaActive: $isBombaLluviaActive, isSoleLluviaOpen: $isSoleLluviaOpen, activeSource: $activeSource, fromBridgeNotification: $fromBridgeNotification)';
+    return 'WaterSystemState(rainTankLevel: $rainTankLevel, streetTankLevel: $streetTankLevel, flowRate: $flowRate, streetPressure: $streetPressure, turbidity: $turbidity, isPumpActive: $isPumpActive, isSolenoidOpen: $isSolenoidOpen, isBombaCalleActive: $isBombaCalleActive, isSolenoideCalleOpen: $isSolenoideCalleOpen, isBombaLluviaActive: $isBombaLluviaActive, isSoleLluviaOpen: $isSoleLluviaOpen, calleS0: $calleS0, calleS50: $calleS50, calleS100: $calleS100, lluviaS0: $lluviaS0, lluviaS50: $lluviaS50, lluviaS100: $lluviaS100, activeSource: $activeSource, fromBridgeNotification: $fromBridgeNotification, tanqueCalleVacio: $tanqueCalleVacio, tanqueLluviaVacio: $tanqueLluviaVacio)';
   }
 
   @override
@@ -375,15 +533,30 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
                 other.isBombaLluviaActive == isBombaLluviaActive) &&
             (identical(other.isSoleLluviaOpen, isSoleLluviaOpen) ||
                 other.isSoleLluviaOpen == isSoleLluviaOpen) &&
+            (identical(other.calleS0, calleS0) || other.calleS0 == calleS0) &&
+            (identical(other.calleS50, calleS50) ||
+                other.calleS50 == calleS50) &&
+            (identical(other.calleS100, calleS100) ||
+                other.calleS100 == calleS100) &&
+            (identical(other.lluviaS0, lluviaS0) ||
+                other.lluviaS0 == lluviaS0) &&
+            (identical(other.lluviaS50, lluviaS50) ||
+                other.lluviaS50 == lluviaS50) &&
+            (identical(other.lluviaS100, lluviaS100) ||
+                other.lluviaS100 == lluviaS100) &&
             (identical(other.activeSource, activeSource) ||
                 other.activeSource == activeSource) &&
             (identical(other.fromBridgeNotification, fromBridgeNotification) ||
-                other.fromBridgeNotification == fromBridgeNotification));
+                other.fromBridgeNotification == fromBridgeNotification) &&
+            (identical(other.tanqueCalleVacio, tanqueCalleVacio) ||
+                other.tanqueCalleVacio == tanqueCalleVacio) &&
+            (identical(other.tanqueLluviaVacio, tanqueLluviaVacio) ||
+                other.tanqueLluviaVacio == tanqueLluviaVacio));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     runtimeType,
     rainTankLevel,
     streetTankLevel,
@@ -396,9 +569,17 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
     isSolenoideCalleOpen,
     isBombaLluviaActive,
     isSoleLluviaOpen,
+    calleS0,
+    calleS50,
+    calleS100,
+    lluviaS0,
+    lluviaS50,
+    lluviaS100,
     activeSource,
     fromBridgeNotification,
-  );
+    tanqueCalleVacio,
+    tanqueLluviaVacio,
+  ]);
 
   /// Create a copy of WaterSystemState
   /// with the given fields replaced by the non-null parameter values.
@@ -430,8 +611,16 @@ abstract class _WaterSystemState implements WaterSystemState {
     final bool isSolenoideCalleOpen,
     final bool isBombaLluviaActive,
     final bool isSoleLluviaOpen,
+    final bool calleS0,
+    final bool calleS50,
+    final bool calleS100,
+    final bool lluviaS0,
+    final bool lluviaS50,
+    final bool lluviaS100,
     final String activeSource,
     final bool fromBridgeNotification,
+    final bool tanqueCalleVacio,
+    final bool tanqueLluviaVacio,
   }) = _$WaterSystemStateImpl;
 
   factory _WaterSystemState.fromJson(Map<String, dynamic> json) =
@@ -458,13 +647,33 @@ abstract class _WaterSystemState implements WaterSystemState {
   @override
   bool get isBombaLluviaActive;
   @override
-  bool get isSoleLluviaOpen;
+  bool get isSoleLluviaOpen; // —— Reed switches individuales Tanque Calle (IDs 8–10) ——
+  // true = sensor detecta agua (LOW en el ESP32)
+  @override
+  bool get calleS0; // sensor_0   (nivel 0%)
+  @override
+  bool get calleS50; // sensor_50  (nivel 50%)
+  @override
+  bool get calleS100; // sensor_100 (nivel 100%)
+  // —— Reed switches individuales Tanque Lluvia (IDs 11–13) ——
+  @override
+  bool get lluviaS0; // sensor_0   (nivel 0%)
+  @override
+  bool get lluviaS50; // sensor_50  (nivel 50%)
+  @override
+  bool get lluviaS100; // sensor_100 (nivel 100%)
   @override
   String get activeSource;
 
   /// True solo cuando el update viene de `agua_iot/notificaciones`.
   @override
   bool get fromBridgeNotification;
+
+  /// Alertas de tanque vacío disparadas por el bridge.
+  @override
+  bool get tanqueCalleVacio;
+  @override
+  bool get tanqueLluviaVacio;
 
   /// Create a copy of WaterSystemState
   /// with the given fields replaced by the non-null parameter values.

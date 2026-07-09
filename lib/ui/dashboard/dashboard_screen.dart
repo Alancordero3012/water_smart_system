@@ -252,7 +252,7 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
   Widget _buildTanks(WaterSystemState state) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: SizedBox(
-          height: 155,
+          height: 165,
           child: Row(
             children: [
               Expanded(
@@ -261,6 +261,9 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
                   level: state.rainTankLevel,
                   color: const Color(0xFF00B4D8),
                   icon: Icons.cloud_queue,
+                  sensor0: state.lluviaS0,
+                  sensor50: state.lluviaS50,
+                  sensor100: state.lluviaS100,
                 ),
               ),
               const SizedBox(width: 8),
@@ -270,6 +273,9 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
                   level: state.streetTankLevel,
                   color: const Color(0xFF48CAE4),
                   icon: Icons.location_city,
+                  sensor0: state.calleS0,
+                  sensor50: state.calleS50,
+                  sensor100: state.calleS100,
                 ),
               ),
             ],

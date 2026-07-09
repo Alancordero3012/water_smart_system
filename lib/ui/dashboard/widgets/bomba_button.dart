@@ -125,7 +125,7 @@ class _BombaButtonState extends ConsumerState<BombaButton>
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: ledGlow.withOpacity(0.55),
+                                color: ledGlow.withValues(alpha: 0.55),
                                 blurRadius: 28,
                                 spreadRadius: 6,
                               ),
@@ -142,8 +142,8 @@ class _BombaButtonState extends ConsumerState<BombaButton>
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: on
-                              ? ledBlue.withOpacity(ledOpacity)
-                              : Colors.white.withOpacity(0.08),
+                              ? ledBlue.withValues(alpha: ledOpacity)
+                              : Colors.white.withValues(alpha: 0.08),
                           width: ledWidth,
                         ),
                         color: Colors.transparent,
@@ -184,7 +184,7 @@ class _BombaButtonState extends ConsumerState<BombaButton>
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2.5,
                                     valueColor: AlwaysStoppedAnimation<Color>(
-                                      ledBlue.withOpacity(0.9),
+                                      ledBlue.withValues(alpha: 0.9),
                                     ),
                                   ),
                                 )
@@ -199,7 +199,7 @@ class _BombaButtonState extends ConsumerState<BombaButton>
                                     size: 30,
                                     color: on
                                         ? ledBlue
-                                        : Colors.white.withOpacity(0.35),
+                                        : Colors.white.withValues(alpha: 0.35),
                                     shadows: on
                                         ? [
                                             Shadow(
@@ -218,10 +218,10 @@ class _BombaButtonState extends ConsumerState<BombaButton>
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: 1.8,
                                   color: pending
-                                      ? Colors.orange.withOpacity(0.85)
+                                      ? Colors.orange.withValues(alpha: 0.85)
                                       : on
                                           ? ledBlue
-                                          : Colors.white.withOpacity(0.25),
+                                          : Colors.white.withValues(alpha: 0.25),
                                   fontFamily: 'monospace',
                                   shadows: on && !pending
                                       ? [
@@ -277,7 +277,7 @@ class _BombaButtonState extends ConsumerState<BombaButton>
             shape: BoxShape.circle,
             color: const Color(0xFF1E1E2C),
             border: Border.all(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha: 0.15),
               width: 1,
             ),
           ),
@@ -285,7 +285,7 @@ class _BombaButtonState extends ConsumerState<BombaButton>
             child: Container(
               width: 3,
               height: 0.8,
-              color: Colors.white.withOpacity(0.25),
+              color: Colors.white.withValues(alpha: 0.25),
             ),
           ),
         ),
@@ -334,20 +334,20 @@ class _MetallicBody extends StatelessWidget {
           // Inner depression when pressed
           if (isPressed) ...[
             BoxShadow(
-              color: Colors.black.withOpacity(0.7),
+              color: Colors.black.withValues(alpha: 0.7),
               blurRadius: 8,
               spreadRadius: 2,
               offset: const Offset(0, 2),
             ),
           ] else ...[
             BoxShadow(
-              color: Colors.black.withOpacity(0.65),
+              color: Colors.black.withValues(alpha: 0.65),
               blurRadius: 18,
               spreadRadius: 4,
               offset: const Offset(0, 6),
             ),
             BoxShadow(
-              color: Colors.white.withOpacity(0.04),
+              color: Colors.white.withValues(alpha: 0.04),
               blurRadius: 4,
               spreadRadius: -2,
               offset: const Offset(-3, -3),
@@ -356,15 +356,15 @@ class _MetallicBody extends StatelessWidget {
           // Glow when on
           if (isOn && !isPressed)
             BoxShadow(
-              color: const Color(0xFF00B4FF).withOpacity(0.20),
+              color: const Color(0xFF00B4FF).withValues(alpha: 0.20),
               blurRadius: 22,
               spreadRadius: 2,
             ),
         ],
         border: Border.all(
           color: isPressed
-              ? Colors.black.withOpacity(0.6)
-              : Colors.white.withOpacity(0.08),
+              ? Colors.black.withValues(alpha: 0.6)
+              : Colors.white.withValues(alpha: 0.08),
           width: 1.5,
         ),
       ),
@@ -392,7 +392,7 @@ class _BombaLabel extends StatelessWidget {
             fontSize: 11,
             fontWeight: FontWeight.w800,
             letterSpacing: 2.5,
-            color: Colors.white.withOpacity(0.65),
+            color: Colors.white.withValues(alpha: 0.65),
           ),
         ),
         const SizedBox(height: 4),
@@ -401,17 +401,17 @@ class _BombaLabel extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
           decoration: BoxDecoration(
             color: isPending
-                ? Colors.orange.withOpacity(0.12)
+                ? Colors.orange.withValues(alpha: 0.12)
                 : isOn
-                    ? const Color(0xFF00B4FF).withOpacity(0.12)
-                    : Colors.white.withOpacity(0.04),
+                    ? const Color(0xFF00B4FF).withValues(alpha: 0.12)
+                    : Colors.white.withValues(alpha: 0.04),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: isPending
-                  ? Colors.orange.withOpacity(0.4)
+                  ? Colors.orange.withValues(alpha: 0.4)
                   : isOn
-                      ? const Color(0xFF00B4FF).withOpacity(0.45)
-                      : Colors.white.withOpacity(0.10),
+                      ? const Color(0xFF00B4FF).withValues(alpha: 0.45)
+                      : Colors.white.withValues(alpha: 0.10),
               width: 1,
             ),
           ),
@@ -427,11 +427,11 @@ class _BombaLabel extends StatelessWidget {
                       ? Colors.orange
                       : isOn
                           ? const Color(0xFF00D4FF)
-                          : Colors.white.withOpacity(0.2),
+                          : Colors.white.withValues(alpha: 0.2),
                   boxShadow: isOn && !isPending
                       ? [
                           BoxShadow(
-                            color: const Color(0xFF00D4FF).withOpacity(0.7),
+                            color: const Color(0xFF00D4FF).withValues(alpha: 0.7),
                             blurRadius: 6,
                           ),
                         ]
@@ -451,10 +451,10 @@ class _BombaLabel extends StatelessWidget {
                   letterSpacing: 1.2,
                   fontFamily: 'monospace',
                   color: isPending
-                      ? Colors.orange.withOpacity(0.85)
+                      ? Colors.orange.withValues(alpha: 0.85)
                       : isOn
                           ? const Color(0xFF00D4FF)
-                          : Colors.white.withOpacity(0.25),
+                          : Colors.white.withValues(alpha: 0.25),
                 ),
               ),
             ],

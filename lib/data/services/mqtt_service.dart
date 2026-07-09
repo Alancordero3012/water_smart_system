@@ -34,9 +34,17 @@ class MqttWaterRepository implements WaterDataRepository {
   // Legacy (simulador.js)
   static const String _topicNivelLluvia    = 'agua_iot/nivel/lectura';
   static const String _topicNivelCalle     = 'agua_iot/nivel/lectura_2';
-  // ESP32 hardware real — tanques con reed switches
+  // ESP32 hardware real — tanques con reed switches (nivel calculado)
   static const String _topicTanqueLluvia   = 'agua_iot/tanque_lluvia/nivel';
   static const String _topicTanqueCalle    = 'agua_iot/tanque_calle/nivel';
+  // ESP32 hardware real — sensores individuales Tanque Calle (IDs 8-10)
+  static const String _topicCalleS0        = 'agua_iot/tanque_calle/sensor_0';
+  static const String _topicCalleS50       = 'agua_iot/tanque_calle/sensor_50';
+  static const String _topicCalleS100      = 'agua_iot/tanque_calle/sensor_100';
+  // ESP32 hardware real — sensores individuales Tanque Lluvia (IDs 11-13)
+  static const String _topicLluviaS0       = 'agua_iot/tanque_lluvia/sensor_0';
+  static const String _topicLluviaS50      = 'agua_iot/tanque_lluvia/sensor_50';
+  static const String _topicLluviaS100     = 'agua_iot/tanque_lluvia/sensor_100';
   // ESP32 hardware real — presión ADC y flujo por pulsos
   static const String _topicPresionReal    = 'agua_iot/sensores/presion';
   static const String _topicFlujoReal      = 'agua_iot/sensores/flujo';
@@ -108,8 +116,13 @@ class MqttWaterRepository implements WaterDataRepository {
       _topicPresion1, _topicPresion2,
       // Legacy (simulador)
       _topicNivelLluvia, _topicNivelCalle,
-      // ESP32 hardware real
+      // ESP32 hardware real — nivel calculado
       _topicTanqueLluvia, _topicTanqueCalle,
+      // ESP32 hardware real — sensores individuales Calle
+      _topicCalleS0, _topicCalleS50, _topicCalleS100,
+      // ESP32 hardware real — sensores individuales Lluvia
+      _topicLluviaS0, _topicLluviaS50, _topicLluviaS100,
+      // ESP32 hardware real — presión y flujo
       _topicPresionReal, _topicFlujoReal,
       _topicTurbidez,
       // Actuadores legacy
@@ -156,6 +169,14 @@ class MqttWaterRepository implements WaterDataRepository {
       case _topicNivelCalle:
       case _topicTanqueCalle:  next = next.copyWith(streetTankLevel: value); break;
       case _topicTurbidez:     next = next.copyWith(turbidity: value); break;
+      // Reed switches individuales — Tanque Calle (1 = agua detectada, 0 = seco)
+      case _topicCalleS0:   next = next.copyWith(calleS0:   value > 0.5); break;
+      case _topicCalleS50:  next = next.copyWith(calleS50:  value > 0.5); break;
+      case _topicCalleS100: next = next.copyWith(calleS100: value > 0.5); break;
+      // Reed switches individuales — Tanque Lluvia
+      case _topicLluviaS0:   next = next.copyWith(lluviaS0:   value > 0.5); break;
+      case _topicLluviaS50:  next = next.copyWith(lluviaS50:  value > 0.5); break;
+      case _topicLluviaS100: next = next.copyWith(lluviaS100: value > 0.5); break;
       // Actuadores: completamente desacoplados por tópico
       case _topicBomba:          next = next.copyWith(isPumpActive: value > 0.5); break;
       case _topicSolenoide:      next = next.copyWith(isSolenoidOpen: value > 0.5); break;
@@ -182,8 +203,10 @@ class MqttWaterRepository implements WaterDataRepository {
           _currentState.copyWith(fromBridgeNotification: true);
 
       switch (type) {
-        case 'turbidez_critica': notifState = notifState.copyWith(turbidity: value); break;
-        case 'baja_presion':     notifState = notifState.copyWith(streetPressure: value); break;
+        case 'turbidez_critica':    notifState = notifState.copyWith(turbidity: value); break;
+        case 'baja_presion':        notifState = notifState.copyWith(streetPressure: value); break;
+        case 'tanque_calle_vacio':  notifState = notifState.copyWith(tanqueCalleVacio: true); break;
+        case 'tanque_lluvia_vacio': notifState = notifState.copyWith(tanqueLluviaVacio: true); break;
         default: return;
       }
 

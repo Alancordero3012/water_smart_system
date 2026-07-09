@@ -20,8 +20,16 @@ _$WaterSystemStateImpl _$$WaterSystemStateImplFromJson(
   isSolenoideCalleOpen: json['isSolenoideCalleOpen'] as bool? ?? false,
   isBombaLluviaActive: json['isBombaLluviaActive'] as bool? ?? false,
   isSoleLluviaOpen: json['isSoleLluviaOpen'] as bool? ?? false,
+  calleS0: json['calleS0'] as bool? ?? false,
+  calleS50: json['calleS50'] as bool? ?? false,
+  calleS100: json['calleS100'] as bool? ?? false,
+  lluviaS0: json['lluviaS0'] as bool? ?? false,
+  lluviaS50: json['lluviaS50'] as bool? ?? false,
+  lluviaS100: json['lluviaS100'] as bool? ?? false,
   activeSource: json['activeSource'] as String? ?? 'lluvia',
   fromBridgeNotification: json['fromBridgeNotification'] as bool? ?? false,
+  tanqueCalleVacio: json['tanqueCalleVacio'] as bool? ?? false,
+  tanqueLluviaVacio: json['tanqueLluviaVacio'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$$WaterSystemStateImplToJson(
@@ -38,6 +46,14 @@ Map<String, dynamic> _$$WaterSystemStateImplToJson(
   'isSolenoideCalleOpen': instance.isSolenoideCalleOpen,
   'isBombaLluviaActive': instance.isBombaLluviaActive,
   'isSoleLluviaOpen': instance.isSoleLluviaOpen,
+  'calleS0': instance.calleS0,
+  'calleS50': instance.calleS50,
+  'calleS100': instance.calleS100,
+  'lluviaS0': instance.lluviaS0,
+  'lluviaS50': instance.lluviaS50,
+  'lluviaS100': instance.lluviaS100,
   'activeSource': instance.activeSource,
   'fromBridgeNotification': instance.fromBridgeNotification,
+  'tanqueCalleVacio': instance.tanqueCalleVacio,
+  'tanqueLluviaVacio': instance.tanqueLluviaVacio,
 };
