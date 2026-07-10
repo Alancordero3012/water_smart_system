@@ -196,18 +196,91 @@ class MqttWaterRepository implements WaterDataRepository {
       final data  = jsonDecode(payload) as Map<String, dynamic>;
       final type  = data['type'] as String?;
       final value = (data['value'] as num?)?.toDouble();
-      if (type == null || value == null) return;
+      if (type == null) return;
 
-      debugPrint('🔔 Notificación del bridge: $type = $value');
+      debugPrint('🔔 Notificación del bridge: $type');
       WaterSystemState notifState =
           _currentState.copyWith(fromBridgeNotification: true);
 
       switch (type) {
-        case 'turbidez_critica':    notifState = notifState.copyWith(turbidity: value); break;
-        case 'baja_presion':        notifState = notifState.copyWith(streetPressure: value); break;
-        case 'tanque_calle_vacio':  notifState = notifState.copyWith(tanqueCalleVacio: true); break;
-        case 'tanque_lluvia_vacio': notifState = notifState.copyWith(tanqueLluviaVacio: true); break;
-        default: return;
+        // ── Alertas numéricas de sensor ───────────────────────────────────
+        case 'turbidez_critica':
+          if (value != null) notifState = notifState.copyWith(turbidity: value);
+          break;
+        case 'baja_presion':
+          if (value != null) notifState = notifState.copyWith(streetPressure: value);
+          break;
+        case 'tanque_calle_vacio':
+          notifState = notifState.copyWith(tanqueCalleVacio: true);
+          break;
+        case 'tanque_lluvia_vacio':
+          notifState = notifState.copyWith(tanqueLluviaVacio: true);
+          break;
+
+        // ── Regla 11: Estado ESP32 ────────────────────────────────────────
+        case 'esp32_offline':
+          final fuente = data['fuente'] as String? ?? '';
+          notifState = notifState.copyWith(
+            esp32ControlOnline: false,
+            detectedFault: 'esp32_offline_$fuente',
+          );
+          break;
+        case 'esp32_online':
+          notifState = notifState.copyWith(
+            esp32ControlOnline: true,
+            detectedFault: '',
+          );
+          break;
+
+        // ── Regla 1/3: Failover automático ───────────────────────────────
+        case 'failover_automatico':
+          final de = data['de'] as String? ?? '';
+          final a  = data['a']  as String? ?? '';
+          notifState = notifState.copyWith(
+            activeSource  : a,
+            failoverActive: true,
+            detectedFault : 'failover_automatico',
+            autoActionLog : '🔄 Failover automático: $de → $a',
+          );
+          break;
+
+        // ── Regla 1: Rotura de tubería detectada ──────────────────────────
+        case 'rotura_tuberia':
+          final fuente = data['fuente'] as String? ?? '';
+          notifState = notifState.copyWith(
+            detectedFault: 'rotura_tuberia_$fuente',
+          );
+          break;
+
+        // ── Regla 2: Fuga detectada ───────────────────────────────────────
+        case 'fuga_detectada':
+          notifState = notifState.copyWith(detectedFault: 'fuga_detectada');
+          break;
+
+        // ── Regla 7: Agua turbia activa ───────────────────────────────────
+        case 'agua_turbia_activa':
+          notifState = notifState.copyWith(detectedFault: 'agua_turbia_activa');
+          break;
+
+        // ── Regla 4: Presión crítica alta ─────────────────────────────────
+        case 'presion_critica_alta':
+          final fuente = data['fuente'] as String? ?? '';
+          notifState = notifState.copyWith(
+            detectedFault: 'presion_critica_alta_$fuente',
+          );
+          break;
+
+        // ── Sin fuente disponible ─────────────────────────────────────────
+        case 'sin_fuente_disponible':
+          notifState = notifState.copyWith(
+            detectedFault: 'sin_fuente_disponible',
+            autoActionLog: '🚨 Ambas fuentes no disponibles — sistema detenido',
+          );
+          break;
+
+        default:
+          debugPrint('ℹ️ Notificación no manejada en Flutter: $type');
+          return;
       }
 
       _currentState = notifState;

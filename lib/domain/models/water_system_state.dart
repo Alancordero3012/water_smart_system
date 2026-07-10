@@ -58,6 +58,35 @@ class WaterSystemState with _$WaterSystemState {
     /// Alertas de tanque vacío disparadas por el bridge.
     @Default(false) bool tanqueCalleVacio,
     @Default(false) bool tanqueLluviaVacio,
+
+    // ── Hardware Health Status (Reglas 8-13) ──────────────────────────────
+    // true = sensor enviando datos correctamente
+
+    /// Regla 8: Sensor de presión online (publica datos < 60s).
+    @Default(true) bool sensorPresionOnline,
+
+    /// Regla 8: Sensor de flujo online (publica datos < 60s).
+    @Default(true) bool sensorFlujoOnline,
+
+    /// Regla 8: Sensores de nivel de tanques online.
+    @Default(true) bool sensoresNivelOnline,
+
+    /// Regla 11: ESP32 de control (actuadores) tiene heartbeat reciente.
+    @Default(true) bool esp32ControlOnline,
+
+    /// Regla 9: Relé no responde a comando enviado.
+    @Default(false) bool releAtascado,
+
+    /// Regla 10: Motor sobrecargado — presión subió muy rápido.
+    @Default(false) bool motorSobrecargado,
+
+    /// Regla 12: Sensor de flujo reporta 0.00 exacto por mucho tiempo
+    /// (posible tapón en el sensor, no rotura de tubo).
+    @Default(false) bool sensorFlujoAtascado,
+
+    /// Regla 13: Sensor de presión reporta 0.00 exacto por mucho tiempo
+    /// (posible cable ADC desconectado, no presión real baja).
+    @Default(false) bool sensorPresionAtascado,
   }) = _WaterSystemState;
 
   factory WaterSystemState.fromJson(Map<String, dynamic> json) =>

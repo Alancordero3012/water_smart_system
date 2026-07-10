@@ -87,6 +87,20 @@ class AlertWrapper extends ConsumerWidget {
               '🚨 CRÍTICO: Ninguna fuente disponible — sistema completamente detenido',
               EventSeverity.critical);
         }
+        // ESP32 offline (Regla 11)
+        else if (fault.startsWith('esp32_offline_')) {
+          final fuente = fault.replaceFirst('esp32_offline_', '').toUpperCase();
+          _fire(context, ref,
+              '⚠️ ESP32 de control ($fuente) sin respuesta — actuadores posiblemente sin control',
+              EventSeverity.critical);
+        }
+      }
+
+      // ── ESP32 volvió online ───────────────────────────────────────────
+      if (!previous.esp32ControlOnline && next.esp32ControlOnline) {
+        _fire(context, ref,
+            '✅ ESP32 de control restaurado — actuadores nuevamente disponibles',
+            EventSeverity.info);
       }
 
       // ── Failover activo → restaurado ──────────────────────────────────

@@ -72,7 +72,34 @@ mixin _$WaterSystemState {
 
   /// Alertas de tanque vacío disparadas por el bridge.
   bool get tanqueCalleVacio => throw _privateConstructorUsedError;
-  bool get tanqueLluviaVacio => throw _privateConstructorUsedError;
+  bool get tanqueLluviaVacio =>
+      throw _privateConstructorUsedError; // ── Hardware Health Status (Reglas 8-13) ──────────────────────────────
+  // true = sensor enviando datos correctamente
+  /// Regla 8: Sensor de presión online (publica datos < 60s).
+  bool get sensorPresionOnline => throw _privateConstructorUsedError;
+
+  /// Regla 8: Sensor de flujo online (publica datos < 60s).
+  bool get sensorFlujoOnline => throw _privateConstructorUsedError;
+
+  /// Regla 8: Sensores de nivel de tanques online.
+  bool get sensoresNivelOnline => throw _privateConstructorUsedError;
+
+  /// Regla 11: ESP32 de control (actuadores) tiene heartbeat reciente.
+  bool get esp32ControlOnline => throw _privateConstructorUsedError;
+
+  /// Regla 9: Relé no responde a comando enviado.
+  bool get releAtascado => throw _privateConstructorUsedError;
+
+  /// Regla 10: Motor sobrecargado — presión subió muy rápido.
+  bool get motorSobrecargado => throw _privateConstructorUsedError;
+
+  /// Regla 12: Sensor de flujo reporta 0.00 exacto por mucho tiempo
+  /// (posible tapón en el sensor, no rotura de tubo).
+  bool get sensorFlujoAtascado => throw _privateConstructorUsedError;
+
+  /// Regla 13: Sensor de presión reporta 0.00 exacto por mucho tiempo
+  /// (posible cable ADC desconectado, no presión real baja).
+  bool get sensorPresionAtascado => throw _privateConstructorUsedError;
 
   /// Serializes this WaterSystemState to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -116,6 +143,14 @@ abstract class $WaterSystemStateCopyWith<$Res> {
     bool fromBridgeNotification,
     bool tanqueCalleVacio,
     bool tanqueLluviaVacio,
+    bool sensorPresionOnline,
+    bool sensorFlujoOnline,
+    bool sensoresNivelOnline,
+    bool esp32ControlOnline,
+    bool releAtascado,
+    bool motorSobrecargado,
+    bool sensorFlujoAtascado,
+    bool sensorPresionAtascado,
   });
 }
 
@@ -158,6 +193,14 @@ class _$WaterSystemStateCopyWithImpl<$Res, $Val extends WaterSystemState>
     Object? fromBridgeNotification = null,
     Object? tanqueCalleVacio = null,
     Object? tanqueLluviaVacio = null,
+    Object? sensorPresionOnline = null,
+    Object? sensorFlujoOnline = null,
+    Object? sensoresNivelOnline = null,
+    Object? esp32ControlOnline = null,
+    Object? releAtascado = null,
+    Object? motorSobrecargado = null,
+    Object? sensorFlujoAtascado = null,
+    Object? sensorPresionAtascado = null,
   }) {
     return _then(
       _value.copyWith(
@@ -257,6 +300,38 @@ class _$WaterSystemStateCopyWithImpl<$Res, $Val extends WaterSystemState>
                 ? _value.tanqueLluviaVacio
                 : tanqueLluviaVacio // ignore: cast_nullable_to_non_nullable
                       as bool,
+            sensorPresionOnline: null == sensorPresionOnline
+                ? _value.sensorPresionOnline
+                : sensorPresionOnline // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            sensorFlujoOnline: null == sensorFlujoOnline
+                ? _value.sensorFlujoOnline
+                : sensorFlujoOnline // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            sensoresNivelOnline: null == sensoresNivelOnline
+                ? _value.sensoresNivelOnline
+                : sensoresNivelOnline // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            esp32ControlOnline: null == esp32ControlOnline
+                ? _value.esp32ControlOnline
+                : esp32ControlOnline // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            releAtascado: null == releAtascado
+                ? _value.releAtascado
+                : releAtascado // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            motorSobrecargado: null == motorSobrecargado
+                ? _value.motorSobrecargado
+                : motorSobrecargado // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            sensorFlujoAtascado: null == sensorFlujoAtascado
+                ? _value.sensorFlujoAtascado
+                : sensorFlujoAtascado // ignore: cast_nullable_to_non_nullable
+                      as bool,
+            sensorPresionAtascado: null == sensorPresionAtascado
+                ? _value.sensorPresionAtascado
+                : sensorPresionAtascado // ignore: cast_nullable_to_non_nullable
+                      as bool,
           )
           as $Val,
     );
@@ -297,6 +372,14 @@ abstract class _$$WaterSystemStateImplCopyWith<$Res>
     bool fromBridgeNotification,
     bool tanqueCalleVacio,
     bool tanqueLluviaVacio,
+    bool sensorPresionOnline,
+    bool sensorFlujoOnline,
+    bool sensoresNivelOnline,
+    bool esp32ControlOnline,
+    bool releAtascado,
+    bool motorSobrecargado,
+    bool sensorFlujoAtascado,
+    bool sensorPresionAtascado,
   });
 }
 
@@ -338,6 +421,14 @@ class __$$WaterSystemStateImplCopyWithImpl<$Res>
     Object? fromBridgeNotification = null,
     Object? tanqueCalleVacio = null,
     Object? tanqueLluviaVacio = null,
+    Object? sensorPresionOnline = null,
+    Object? sensorFlujoOnline = null,
+    Object? sensoresNivelOnline = null,
+    Object? esp32ControlOnline = null,
+    Object? releAtascado = null,
+    Object? motorSobrecargado = null,
+    Object? sensorFlujoAtascado = null,
+    Object? sensorPresionAtascado = null,
   }) {
     return _then(
       _$WaterSystemStateImpl(
@@ -437,6 +528,38 @@ class __$$WaterSystemStateImplCopyWithImpl<$Res>
             ? _value.tanqueLluviaVacio
             : tanqueLluviaVacio // ignore: cast_nullable_to_non_nullable
                   as bool,
+        sensorPresionOnline: null == sensorPresionOnline
+            ? _value.sensorPresionOnline
+            : sensorPresionOnline // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        sensorFlujoOnline: null == sensorFlujoOnline
+            ? _value.sensorFlujoOnline
+            : sensorFlujoOnline // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        sensoresNivelOnline: null == sensoresNivelOnline
+            ? _value.sensoresNivelOnline
+            : sensoresNivelOnline // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        esp32ControlOnline: null == esp32ControlOnline
+            ? _value.esp32ControlOnline
+            : esp32ControlOnline // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        releAtascado: null == releAtascado
+            ? _value.releAtascado
+            : releAtascado // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        motorSobrecargado: null == motorSobrecargado
+            ? _value.motorSobrecargado
+            : motorSobrecargado // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        sensorFlujoAtascado: null == sensorFlujoAtascado
+            ? _value.sensorFlujoAtascado
+            : sensorFlujoAtascado // ignore: cast_nullable_to_non_nullable
+                  as bool,
+        sensorPresionAtascado: null == sensorPresionAtascado
+            ? _value.sensorPresionAtascado
+            : sensorPresionAtascado // ignore: cast_nullable_to_non_nullable
+                  as bool,
       ),
     );
   }
@@ -470,6 +593,14 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
     this.fromBridgeNotification = false,
     this.tanqueCalleVacio = false,
     this.tanqueLluviaVacio = false,
+    this.sensorPresionOnline = true,
+    this.sensorFlujoOnline = true,
+    this.sensoresNivelOnline = true,
+    this.esp32ControlOnline = true,
+    this.releAtascado = false,
+    this.motorSobrecargado = false,
+    this.sensorFlujoAtascado = false,
+    this.sensorPresionAtascado = false,
   });
 
   factory _$WaterSystemStateImpl.fromJson(Map<String, dynamic> json) =>
@@ -575,10 +706,53 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
   @override
   @JsonKey()
   final bool tanqueLluviaVacio;
+  // ── Hardware Health Status (Reglas 8-13) ──────────────────────────────
+  // true = sensor enviando datos correctamente
+  /// Regla 8: Sensor de presión online (publica datos < 60s).
+  @override
+  @JsonKey()
+  final bool sensorPresionOnline;
+
+  /// Regla 8: Sensor de flujo online (publica datos < 60s).
+  @override
+  @JsonKey()
+  final bool sensorFlujoOnline;
+
+  /// Regla 8: Sensores de nivel de tanques online.
+  @override
+  @JsonKey()
+  final bool sensoresNivelOnline;
+
+  /// Regla 11: ESP32 de control (actuadores) tiene heartbeat reciente.
+  @override
+  @JsonKey()
+  final bool esp32ControlOnline;
+
+  /// Regla 9: Relé no responde a comando enviado.
+  @override
+  @JsonKey()
+  final bool releAtascado;
+
+  /// Regla 10: Motor sobrecargado — presión subió muy rápido.
+  @override
+  @JsonKey()
+  final bool motorSobrecargado;
+
+  /// Regla 12: Sensor de flujo reporta 0.00 exacto por mucho tiempo
+  /// (posible tapón en el sensor, no rotura de tubo).
+  @override
+  @JsonKey()
+  final bool sensorFlujoAtascado;
+
+  /// Regla 13: Sensor de presión reporta 0.00 exacto por mucho tiempo
+  /// (posible cable ADC desconectado, no presión real baja).
+  @override
+  @JsonKey()
+  final bool sensorPresionAtascado;
 
   @override
   String toString() {
-    return 'WaterSystemState(rainTankLevel: $rainTankLevel, streetTankLevel: $streetTankLevel, flowRate: $flowRate, streetPressure: $streetPressure, turbidity: $turbidity, isPumpActive: $isPumpActive, isSolenoidOpen: $isSolenoidOpen, isBombaCalleActive: $isBombaCalleActive, isSolenoideCalleOpen: $isSolenoideCalleOpen, isBombaLluviaActive: $isBombaLluviaActive, isSoleLluviaOpen: $isSoleLluviaOpen, calleS0: $calleS0, calleS50: $calleS50, calleS100: $calleS100, lluviaS0: $lluviaS0, lluviaS50: $lluviaS50, lluviaS100: $lluviaS100, activeSource: $activeSource, detectedFault: $detectedFault, autoActionLog: $autoActionLog, failoverActive: $failoverActive, fromBridgeNotification: $fromBridgeNotification, tanqueCalleVacio: $tanqueCalleVacio, tanqueLluviaVacio: $tanqueLluviaVacio)';
+    return 'WaterSystemState(rainTankLevel: $rainTankLevel, streetTankLevel: $streetTankLevel, flowRate: $flowRate, streetPressure: $streetPressure, turbidity: $turbidity, isPumpActive: $isPumpActive, isSolenoidOpen: $isSolenoidOpen, isBombaCalleActive: $isBombaCalleActive, isSolenoideCalleOpen: $isSolenoideCalleOpen, isBombaLluviaActive: $isBombaLluviaActive, isSoleLluviaOpen: $isSoleLluviaOpen, calleS0: $calleS0, calleS50: $calleS50, calleS100: $calleS100, lluviaS0: $lluviaS0, lluviaS50: $lluviaS50, lluviaS100: $lluviaS100, activeSource: $activeSource, detectedFault: $detectedFault, autoActionLog: $autoActionLog, failoverActive: $failoverActive, fromBridgeNotification: $fromBridgeNotification, tanqueCalleVacio: $tanqueCalleVacio, tanqueLluviaVacio: $tanqueLluviaVacio, sensorPresionOnline: $sensorPresionOnline, sensorFlujoOnline: $sensorFlujoOnline, sensoresNivelOnline: $sensoresNivelOnline, esp32ControlOnline: $esp32ControlOnline, releAtascado: $releAtascado, motorSobrecargado: $motorSobrecargado, sensorFlujoAtascado: $sensorFlujoAtascado, sensorPresionAtascado: $sensorPresionAtascado)';
   }
 
   @override
@@ -632,7 +806,23 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
             (identical(other.tanqueCalleVacio, tanqueCalleVacio) ||
                 other.tanqueCalleVacio == tanqueCalleVacio) &&
             (identical(other.tanqueLluviaVacio, tanqueLluviaVacio) ||
-                other.tanqueLluviaVacio == tanqueLluviaVacio));
+                other.tanqueLluviaVacio == tanqueLluviaVacio) &&
+            (identical(other.sensorPresionOnline, sensorPresionOnline) ||
+                other.sensorPresionOnline == sensorPresionOnline) &&
+            (identical(other.sensorFlujoOnline, sensorFlujoOnline) ||
+                other.sensorFlujoOnline == sensorFlujoOnline) &&
+            (identical(other.sensoresNivelOnline, sensoresNivelOnline) ||
+                other.sensoresNivelOnline == sensoresNivelOnline) &&
+            (identical(other.esp32ControlOnline, esp32ControlOnline) ||
+                other.esp32ControlOnline == esp32ControlOnline) &&
+            (identical(other.releAtascado, releAtascado) ||
+                other.releAtascado == releAtascado) &&
+            (identical(other.motorSobrecargado, motorSobrecargado) ||
+                other.motorSobrecargado == motorSobrecargado) &&
+            (identical(other.sensorFlujoAtascado, sensorFlujoAtascado) ||
+                other.sensorFlujoAtascado == sensorFlujoAtascado) &&
+            (identical(other.sensorPresionAtascado, sensorPresionAtascado) ||
+                other.sensorPresionAtascado == sensorPresionAtascado));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -663,6 +853,14 @@ class _$WaterSystemStateImpl implements _WaterSystemState {
     fromBridgeNotification,
     tanqueCalleVacio,
     tanqueLluviaVacio,
+    sensorPresionOnline,
+    sensorFlujoOnline,
+    sensoresNivelOnline,
+    esp32ControlOnline,
+    releAtascado,
+    motorSobrecargado,
+    sensorFlujoAtascado,
+    sensorPresionAtascado,
   ]);
 
   /// Create a copy of WaterSystemState
@@ -708,6 +906,14 @@ abstract class _WaterSystemState implements WaterSystemState {
     final bool fromBridgeNotification,
     final bool tanqueCalleVacio,
     final bool tanqueLluviaVacio,
+    final bool sensorPresionOnline,
+    final bool sensorFlujoOnline,
+    final bool sensoresNivelOnline,
+    final bool esp32ControlOnline,
+    final bool releAtascado,
+    final bool motorSobrecargado,
+    final bool sensorFlujoAtascado,
+    final bool sensorPresionAtascado,
   }) = _$WaterSystemStateImpl;
 
   factory _WaterSystemState.fromJson(Map<String, dynamic> json) =
@@ -778,7 +984,41 @@ abstract class _WaterSystemState implements WaterSystemState {
   @override
   bool get tanqueCalleVacio;
   @override
-  bool get tanqueLluviaVacio;
+  bool get tanqueLluviaVacio; // ── Hardware Health Status (Reglas 8-13) ──────────────────────────────
+  // true = sensor enviando datos correctamente
+  /// Regla 8: Sensor de presión online (publica datos < 60s).
+  @override
+  bool get sensorPresionOnline;
+
+  /// Regla 8: Sensor de flujo online (publica datos < 60s).
+  @override
+  bool get sensorFlujoOnline;
+
+  /// Regla 8: Sensores de nivel de tanques online.
+  @override
+  bool get sensoresNivelOnline;
+
+  /// Regla 11: ESP32 de control (actuadores) tiene heartbeat reciente.
+  @override
+  bool get esp32ControlOnline;
+
+  /// Regla 9: Relé no responde a comando enviado.
+  @override
+  bool get releAtascado;
+
+  /// Regla 10: Motor sobrecargado — presión subió muy rápido.
+  @override
+  bool get motorSobrecargado;
+
+  /// Regla 12: Sensor de flujo reporta 0.00 exacto por mucho tiempo
+  /// (posible tapón en el sensor, no rotura de tubo).
+  @override
+  bool get sensorFlujoAtascado;
+
+  /// Regla 13: Sensor de presión reporta 0.00 exacto por mucho tiempo
+  /// (posible cable ADC desconectado, no presión real baja).
+  @override
+  bool get sensorPresionAtascado;
 
   /// Create a copy of WaterSystemState
   /// with the given fields replaced by the non-null parameter values.

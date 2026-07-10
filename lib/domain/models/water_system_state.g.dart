@@ -33,6 +33,14 @@ _$WaterSystemStateImpl _$$WaterSystemStateImplFromJson(
   fromBridgeNotification: json['fromBridgeNotification'] as bool? ?? false,
   tanqueCalleVacio: json['tanqueCalleVacio'] as bool? ?? false,
   tanqueLluviaVacio: json['tanqueLluviaVacio'] as bool? ?? false,
+  sensorPresionOnline: json['sensorPresionOnline'] as bool? ?? true,
+  sensorFlujoOnline: json['sensorFlujoOnline'] as bool? ?? true,
+  sensoresNivelOnline: json['sensoresNivelOnline'] as bool? ?? true,
+  esp32ControlOnline: json['esp32ControlOnline'] as bool? ?? true,
+  releAtascado: json['releAtascado'] as bool? ?? false,
+  motorSobrecargado: json['motorSobrecargado'] as bool? ?? false,
+  sensorFlujoAtascado: json['sensorFlujoAtascado'] as bool? ?? false,
+  sensorPresionAtascado: json['sensorPresionAtascado'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$$WaterSystemStateImplToJson(
@@ -62,4 +70,12 @@ Map<String, dynamic> _$$WaterSystemStateImplToJson(
   'fromBridgeNotification': instance.fromBridgeNotification,
   'tanqueCalleVacio': instance.tanqueCalleVacio,
   'tanqueLluviaVacio': instance.tanqueLluviaVacio,
+  'sensorPresionOnline': instance.sensorPresionOnline,
+  'sensorFlujoOnline': instance.sensorFlujoOnline,
+  'sensoresNivelOnline': instance.sensoresNivelOnline,
+  'esp32ControlOnline': instance.esp32ControlOnline,
+  'releAtascado': instance.releAtascado,
+  'motorSobrecargado': instance.motorSobrecargado,
+  'sensorFlujoAtascado': instance.sensorFlujoAtascado,
+  'sensorPresionAtascado': instance.sensorPresionAtascado,
 };

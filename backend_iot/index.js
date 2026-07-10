@@ -81,15 +81,17 @@ client.on('connect', () => {
         'agua_iot/tanque_calle/sensor_0',
         'agua_iot/tanque_calle/sensor_50',
         'agua_iot/tanque_calle/sensor_100',
-        // ── Tópicos ESP32 Presión y Flujo (hardware real) ──────────────────────
+        // ── Tópicos ESP32 Presión y Flujo (hardware real) ──────────────────
         'agua_iot/sensores/presion',
         'agua_iot/sensores/flujo',
-        // ── Tópicos ESP32 Actuadores (hardware real) ─────────────────────────
-        // ESP32_WaterSmart_Alan: Fuente 1 (calle) y Fuente 2 (lluvia)
+        // ── Tópicos ESP32 Actuadores (hardware real) ────────────────────
         'agua_iot/actuadores/bomba_calle',
         'agua_iot/actuadores/solenoide_calle',
         'agua_iot/actuadores/bomba_lluvia',
         'agua_iot/actuadores/solenoide_lluvia',
+        // ── Heartbeat ESP32s (Regla 11) ─────────────────────────────────
+        'agua_iot/heartbeat/control_calle',
+        'agua_iot/heartbeat/control_lluvia',
     ];
 
     client.subscribe(topics, (err) => {
@@ -158,21 +160,28 @@ const sistemaEstado = {
     presion       : 0,
     flujo         : 0,
     turbidez      : 0,
-    tankCalle     : 0,    // nivel % (0 | 50 | 100)
+    tankCalle     : 0,
     tankLluvia    : 0,
     // Tracking de tiempo para reglas basadas en duración
-    flujoZeroDesde   : null,  // Date | null
-    presionBajaDesde : null,  // Date | null
-    lastFailover     : null,  // Date | null
-    failoverCooldownMs: 90000, // 90s mínimo entre failovers
+    flujoZeroDesde   : null,
+    presionBajaDesde : null,
+    lastFailover     : null,
+    failoverCooldownMs: 90000,
     // Umbrales
-    MIN_PRESION    : 10,   // PSI
-    MAX_PRESION    : 45,   // PSI
-    MAX_TURBIDEZ   : 50,   // NTU
-    MIN_FLUJO_FUGA : 0.5,  // L/min — fuga si sistema apagado
-    MIN_TANK_NIVEL : 15,   // % — por debajo = fuente no usable
-    WINDOW_ROTURA  : 30000,// 30s de flujo cero = rotura
-    WINDOW_PRESION : 20000,// 20s de presión baja = failover
+    MIN_PRESION    : 10,
+    MAX_PRESION    : 45,
+    MAX_TURBIDEZ   : 50,
+    MIN_FLUJO_FUGA : 0.5,
+    MIN_TANK_NIVEL : 15,
+    WINDOW_ROTURA  : 30000,
+    WINDOW_PRESION : 20000,
+    // ── Heartbeat ESP32s (Regla 11) ────────────────────────────────
+    // null = nunca visto, Date = último heartbeat recibido
+    lastHeartbeatCalle  : null,
+    lastHeartbeatLluvia : null,
+    HEARTBEAT_TIMEOUT_MS: 35000,  // 35s sin heartbeat = ESP32 caído
+    esp32CalleOnline    : false,  // se pone true al primer heartbeat
+    esp32LluviaOnline   : false,
 };
 
 // ── Sincronizar estado desde mensajes MQTT ───────────────────────────────────
@@ -187,10 +196,10 @@ function syncEstado(topic, valor) {
         sistemaEstado.tankCalle = valor;
     else if (topic === 'agua_iot/tanque_lluvia/nivel' || topic === 'agua_iot/nivel/lectura')
         sistemaEstado.tankLluvia = valor;
-    else if (topic === 'agua_iot/actuadores/bomba_calle')   sistemaEstado.bombaCalle     = valor === 1;
+    else if (topic === 'agua_iot/actuadores/bomba_calle')     sistemaEstado.bombaCalle     = valor === 1;
     else if (topic === 'agua_iot/actuadores/solenoide_calle') sistemaEstado.solenoideCalle = valor === 1;
-    else if (topic === 'agua_iot/actuadores/bomba_lluvia')  sistemaEstado.bombaLluvia    = valor === 1;
-    else if (topic === 'agua_iot/actuadores/solenoide_lluvia') sistemaEstado.soleLluvia   = valor === 1;
+    else if (topic === 'agua_iot/actuadores/bomba_lluvia')    sistemaEstado.bombaLluvia    = valor === 1;
+    else if (topic === 'agua_iot/actuadores/solenoide_lluvia') sistemaEstado.soleLluvia    = valor === 1;
     // Legacy actuadores
     else if (topic === 'agua_iot/actuadores/bomba')     sistemaEstado.bombaCalle     = valor === 1;
     else if (topic === 'agua_iot/actuadores/solenoide') sistemaEstado.solenoideCalle = valor === 1;
@@ -333,6 +342,28 @@ function evaluarReglasInteligentes(topic) {
 // --- Lógica del Puente (MQTT -> MySQL) ---
 client.on('message', async (topic, message) => {
     try {
+        // ── Regla 11: Heartbeat ESP32 (string "online", no numérico) ─────────
+        if (topic === 'agua_iot/heartbeat/control_calle') {
+            const wasOffline = !sistemaEstado.esp32CalleOnline;
+            sistemaEstado.lastHeartbeatCalle = Date.now();
+            sistemaEstado.esp32CalleOnline   = true;
+            if (wasOffline) {
+                autoNotificacion('esp32_online', { fuente: 'calle' });
+                console.log('✅ ESP32 Calle ONLINE');
+            }
+            return;
+        }
+        if (topic === 'agua_iot/heartbeat/control_lluvia') {
+            const wasOffline = !sistemaEstado.esp32LluviaOnline;
+            sistemaEstado.lastHeartbeatLluvia = Date.now();
+            sistemaEstado.esp32LluviaOnline   = true;
+            if (wasOffline) {
+                autoNotificacion('esp32_online', { fuente: 'lluvia' });
+                console.log('✅ ESP32 Lluvia ONLINE');
+            }
+            return;
+        }
+
         const valor = parseFloat(message.toString());
 
         if (isNaN(valor)) {
@@ -534,3 +565,39 @@ process.on('SIGINT', async () => {
     }
     process.exit(0);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔍 WATCHDOG — Regla 11: Detector de ESP32 Offline
+// Corre cada 15s y comprueba si algún ESP32 dejó de enviar heartbeat.
+// Si el ESP32 de control cae, notifica a Flutter para alertar al usuario.
+// ═══════════════════════════════════════════════════════════════════════════════
+setInterval(() => {
+    const ahora = Date.now();
+    const timeout = sistemaEstado.HEARTBEAT_TIMEOUT_MS;
+
+    // ── ESP32 Calle ───────────────────────────────────────────────────────────
+    if (sistemaEstado.esp32CalleOnline && sistemaEstado.lastHeartbeatCalle) {
+        const silencio = ahora - sistemaEstado.lastHeartbeatCalle;
+        if (silencio > timeout) {
+            sistemaEstado.esp32CalleOnline = false;
+            console.warn(`⚠️ ESP32 Calle OFFLINE — sin heartbeat por ${Math.round(silencio/1000)}s`);
+            autoNotificacion('esp32_offline', {
+                fuente: 'calle',
+                silencioSegundos: Math.round(silencio / 1000)
+            });
+        }
+    }
+
+    // ── ESP32 Lluvia ──────────────────────────────────────────────────────────
+    if (sistemaEstado.esp32LluviaOnline && sistemaEstado.lastHeartbeatLluvia) {
+        const silencio = ahora - sistemaEstado.lastHeartbeatLluvia;
+        if (silencio > timeout) {
+            sistemaEstado.esp32LluviaOnline = false;
+            console.warn(`⚠️ ESP32 Lluvia OFFLINE — sin heartbeat por ${Math.round(silencio/1000)}s`);
+            autoNotificacion('esp32_offline', {
+                fuente: 'lluvia',
+                silencioSegundos: Math.round(silencio / 1000)
+            });
+        }
+    }
+}, 15000); // Revisar cada 15 segundos
