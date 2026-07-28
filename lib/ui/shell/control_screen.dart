@@ -93,17 +93,18 @@ class ControlScreen extends ConsumerWidget {
                   ),
                 ),
                 _divider(),
-                _MetricRow(
-                  label: 'Turbidez',
-                  valueWidget: GlowValue(
-                    rawValue: state.turbidity,
-                    unit: 'NTU',
-                    color: state.turbidity > 50
-                        ? Colors.redAccent
-                        : const Color(0xFF00E5FF),
-                    fontSize: 18,
-                  ),
-                ),
+                // DESACTIVADO: sensor de turbidez no verificado en hardware actual
+                // _MetricRow(
+                //   label: 'Turbidez',
+                //   valueWidget: GlowValue(
+                //     rawValue: state.turbidity,
+                //     unit: 'NTU',
+                //     color: state.turbidity > 50
+                //         ? Colors.redAccent
+                //         : const Color(0xFF00E5FF),
+                //     fontSize: 18,
+                //   ),
+                // ),
                 _divider(),
                 _MetricRow(
                   label: 'Fuente activa',
@@ -158,6 +159,7 @@ class _FuenteCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final actuatorState = ref.watch(actuatorProvider);
+    final isTestMode    = ref.watch(testModeProvider);
 
     final bool isActive = switch (type) {
       FuenteType.fuente1 => actuatorState.fuente1Active,
@@ -188,11 +190,17 @@ class _FuenteCard extends ConsumerWidget {
       onTap: isPending
           ? null
           : () {
-              ref.read(actuatorProvider.notifier).toggle(type);
+              // En Modo Prueba: bypassInterlock=true para poder encender
+              // cualquier fuente sin restricciones (util para probar hardware).
+              ref.read(actuatorProvider.notifier).toggle(
+                type,
+                bypassInterlock: isTestMode,
+              );
               final fuenteName = type == FuenteType.fuente1 ? 'Fuente Calle' : 'Fuente Lluvia';
               AppNotifications.show(
                 context,
-                '$fuenteName → ${isActive ? "apagando Bomba + Solenoide" : "encendiendo Bomba + Solenoide"}',
+                '$fuenteName → ${isActive ? "apagando Bomba + Solenoide" : "encendiendo Bomba + Solenoide"}'
+                '${isTestMode ? " [MODO PRUEBA]" : ""}',
                 type: NotificationType.info,
               );
             },

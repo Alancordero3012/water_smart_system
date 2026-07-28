@@ -38,12 +38,6 @@ client.on('connect', () => {
         streetTankLevel + (Math.random() * 4 - 2)
       ));
 
-      // --- Turbidez (0-8 NTU normal, spike ocasional a 55+) ---
-      const turbiditySpikeChance = Math.random();
-      const turbidez = turbiditySpikeChance > 0.95
-        ? (Math.random() * 20 + 55).toFixed(2)  // Spike de alerta
-        : (Math.random() * 8).toFixed(2);        // Normal
-
       // --- Estado Bomba (toggle cada ~30s promedio) ---
       if (Math.random() > 0.85) isPumpActive = !isPumpActive;
 
@@ -59,9 +53,6 @@ client.on('connect', () => {
 
       client.publish('agua_iot/nivel/lectura_2', streetTankLevel.toFixed(2));
       console.log(`📤 nivel/lectura_2 → ${streetTankLevel.toFixed(2)} %`);
-
-      client.publish('agua_iot/calidad/turbidez', turbidez.toString());
-      console.log(`📤 calidad/turbidez → ${turbidez} NTU`);
 
       client.publish('agua_iot/actuadores/bomba', isPumpActive ? '1' : '0');
       console.log(`📤 actuadores/bomba → ${isPumpActive ? 'ON' : 'OFF'}`);

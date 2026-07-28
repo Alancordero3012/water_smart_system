@@ -117,6 +117,28 @@ class BridgeHealthNotifier extends StateNotifier<BridgeHealth> {
     await _poll();
   }
 
+  /// Sincroniza el Modo Prueba con el backend Node.js.
+  /// Llama POST http://localhost:3001/api/test-mode { "active": true|false }.
+  /// Funciona tanto en desktop como en web — el backend tiene CORS habilitado.
+  Future<void> setTestMode(bool active) async {
+    // ⚠️ Se eliminó el guard `if (kIsWeb) return` que impedía sincronizar el
+    // backend en modo web, dejando las reglas automáticas activas y
+    // contrarrestando los comandos del usuario aunque el toggle estuviera ON.
+    try {
+      final body = active ? '{"active": true}' : '{"active": false}';
+      await http
+          .post(
+            Uri.parse('http://localhost:3001/api/test-mode'),
+            headers: {'Content-Type': 'application/json'},
+            body: body,
+          )
+          .timeout(const Duration(seconds: 4));
+      debugPrint('🧪 Backend test-mode → ${active ? "ACTIVADO" : "DESACTIVADO"}');
+    } catch (e) {
+      debugPrint('⚠️ No se pudo sincronizar test-mode con el backend: $e');
+    }
+  }
+
   @override
   void dispose() {
     _timer?.cancel();

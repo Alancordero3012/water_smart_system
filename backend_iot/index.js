@@ -5,6 +5,59 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
+const nodemailer = require('nodemailer');
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ✉ EMAIL ALERTS (Nodemailer + Gmail SMTP)
+// Configura EMAIL_APP_PASS en .env con tu Google App Password
+// ═══════════════════════════════════════════════════════════════════════════════
+const emailTransporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_APP_PASS,
+    },
+});
+
+// Cooldown por tipo: no spamear el mismo tipo de alerta más de 1 vez cada 5 min
+const emailCooldowns = {};
+const EMAIL_COOLDOWN_MS = 5 * 60 * 1000;
+
+async function enviarAlertaEmail(tipo, asunto, cuerpoHtml) {
+    if (!process.env.EMAIL_APP_PASS || process.env.EMAIL_APP_PASS === 'REEMPLAZA_CON_TU_APP_PASSWORD') {
+        console.log(`ℹ️ [Email] App Password no configurada — omitiendo alerta: ${tipo}`);
+        return;
+    }
+    const ahora = Date.now();
+    if (emailCooldowns[tipo] && ahora - emailCooldowns[tipo] < EMAIL_COOLDOWN_MS) {
+        console.log(`⏸️ [Email] Cooldown activo para ${tipo} — omitiendo`);
+        return;
+    }
+    emailCooldowns[tipo] = ahora;
+    try {
+        await emailTransporter.sendMail({
+            from: `"WaterSmart Alerts" <${process.env.EMAIL_USER}>`,
+            to: process.env.EMAIL_TO,
+            subject: asunto,
+            html: `
+                <div style="font-family:sans-serif;background:#0d1117;color:#e6edf3;padding:32px;border-radius:12px">
+                  <div style="border-left:4px solid #00e5ff;padding-left:16px;margin-bottom:24px">
+                    <h2 style="color:#00e5ff;margin:0;letter-spacing:2px">WATER SMART SYSTEM</h2>
+                    <p style="color:#8b949e;margin:4px 0">Alerta Automática del Sistema</p>
+                  </div>
+                  ${cuerpoHtml}
+                  <hr style="border-color:#21262d;margin:24px 0">
+                  <p style="color:#8b949e;font-size:12px">
+                    ⏰ ${new Date().toLocaleString('es-VE', { timeZone: 'America/Caracas' })} (VET)
+                  </p>
+                </div>`,
+        });
+        console.log(`✉ [Email] Alerta enviada: ${asunto}`);
+    } catch (err) {
+        console.error(`❌ [Email] Error enviando alerta: ${err.message}`);
+    }
+}
+
 
 // Connected Flutter Web clients
 const wsClients = new Set();
@@ -33,6 +86,22 @@ async function initDB() {
         const connection = await pool.getConnection();
         console.log('✅ Conectado exitosamente a Aiven MySQL vía Pool');
         connection.release();
+        // ── Crear tabla fault_events si no existe (GAP 2: memoria de fallas) ──
+        await pool.execute(`
+            CREATE TABLE IF NOT EXISTS fault_events (
+                id            INT AUTO_INCREMENT PRIMARY KEY,
+                fault_type    VARCHAR(100) NOT NULL,
+                fuente_activa VARCHAR(20)  DEFAULT NULL,
+                presion       FLOAT        DEFAULT NULL,
+                flujo         FLOAT        DEFAULT NULL,
+                nivel_tank    FLOAT        DEFAULT NULL,
+                detalles      TEXT         DEFAULT NULL,
+                fecha         TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_fault_type (fault_type),
+                INDEX idx_fecha (fecha)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        console.log('✅ Tabla fault_events lista');
     } catch (error) {
         console.error('❌ Error inicializando DB:', error.message);
         if (error.code === 'ENOENT') {
@@ -42,6 +111,49 @@ async function initDB() {
         console.log('⏳ Reintentando conexión a DB en 5 segundos...');
         setTimeout(initDB, 5000);
     }
+}
+
+// ── GAP 2: Guardar evento de falla en MySQL ───────────────────────────────────
+async function guardarFaultEvent(tipo, datos = {}) {
+    if (!pool) return;
+    try {
+        await pool.execute(
+            `INSERT INTO fault_events (fault_type, fuente_activa, presion, flujo, nivel_tank, detalles)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+                tipo,
+                datos.fuente || getFuenteActiva() || null,
+                sistemaEstado.presion  || null,
+                sistemaEstado.flujo    || null,
+                datos.nivel            || null,
+                JSON.stringify(datos),
+            ]
+        );
+    } catch (err) {
+        console.warn(`⚠️ [fault_events] No se pudo guardar evento: ${err.message}`);
+    }
+}
+
+// ── GAP 6: Buffer circular de lecturas de presión/flujo (derivada) ────────────
+const BUFFER_SIZE = 10;
+const pressureBuffer = [];  // [{value, ts}]
+const flowBuffer     = [];  // [{value, ts}]
+const levelCalleBuf  = [];  // [{value, ts}] para correlación nivel-flujo
+const levelLluviaBuf = [];
+
+function pushBuffer(buf, value) {
+    buf.push({ value, ts: Date.now() });
+    if (buf.length > BUFFER_SIZE) buf.shift();
+}
+
+// Calcula la tasa de cambio (unidad/segundo) entre el primer y último punto del buffer.
+function getRateOfChange(buf) {
+    if (buf.length < 3) return 0;
+    const oldest = buf[0];
+    const newest = buf[buf.length - 1];
+    const deltaT = (newest.ts - oldest.ts) / 1000; // segundos
+    if (deltaT <= 0) return 0;
+    return (newest.value - oldest.value) / deltaT;
 }
 
 initDB();
@@ -63,13 +175,18 @@ const client = mqtt.connect(mqttUrl, mqttOptions);
 client.on('connect', () => {
     console.log('✅ Conectado a HiveMQ Cloud con éxito');
 
+    // ── Limpiar tópico de turbidez del broker (mensaje retenido vacío) ────────
+    // Publicar payload vacío con retain:true elimina el tópico del broker.
+    client.publish('agua_iot/calidad/turbidez', '', { retain: true, qos: 1 }, () => {
+        console.log('🧹 Tópico agua_iot/calidad/turbidez limpiado del broker');
+    });
+
     const topics = [
         // ── Tópicos Legacy (simulador.js) ────────────────────────────────────
         'agua_iot/sensores_presion/1',
         'agua_iot/sensores_presion/2',
         'agua_iot/nivel/lectura',
         'agua_iot/nivel/lectura_2',
-        'agua_iot/calidad/turbidez',
         'agua_iot/actuadores/bomba',
         'agua_iot/actuadores/solenoide',
         // ── Tópicos ESP32 Tanques (hardware real) ─────────────────────────────
@@ -119,7 +236,6 @@ const TOPIC_MAP = {
     'agua_iot/sensores_presion/2': 2,  // Flujo   (tópico legacy)
     'agua_iot/nivel/lectura':      3,  // Nivel Tanque Lluvia  (tópico legacy)
     'agua_iot/nivel/lectura_2':    4,  // Nivel Tanque Calle   (tópico legacy)
-    'agua_iot/calidad/turbidez':   5,  // Turbidez
     'agua_iot/actuadores/bomba':   6,  // Estado Bomba (0/1)
     'agua_iot/actuadores/solenoide': 7, // Estado Solenoide (0/1)
     // ── Tópicos ESP32 hardware real — niveles calculados ─────────────────────
@@ -144,6 +260,13 @@ const TOPIC_MAP = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// 🧪 MODO PRUEBA — cuando está activo se saltean TODAS las reglas automáticas.
+//           Activár con POST /api/test-mode  { "active": true }
+//           Desactivar con  POST /api/test-mode  { "active": false }
+// ═══════════════════════════════════════════════════════════════════════════════
+let modoPrueba = false;
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // 🧠 MOTOR DE REGLAS INTELIGENTES (Backend — actúa incluso sin Flutter abierto)
 //
 // PRINCIPIO: Si falla la fuente activa → cambiar a la fuente de respaldo.
@@ -159,7 +282,6 @@ const sistemaEstado = {
     // Sensores
     presion       : 0,
     flujo         : 0,
-    turbidez      : 0,
     tankCalle     : 0,
     tankLluvia    : 0,
     // Tracking de tiempo para reglas basadas en duración
@@ -170,7 +292,6 @@ const sistemaEstado = {
     // Umbrales
     MIN_PRESION    : 10,
     MAX_PRESION    : 45,
-    MAX_TURBIDEZ   : 50,
     MIN_FLUJO_FUGA : 0.5,
     MIN_TANK_NIVEL : 15,
     WINDOW_ROTURA  : 30000,
@@ -186,17 +307,19 @@ const sistemaEstado = {
 
 // ── Sincronizar estado desde mensajes MQTT ───────────────────────────────────
 function syncEstado(topic, valor) {
-    if (topic === 'agua_iot/sensores/presion' || topic === 'agua_iot/sensores_presion/1')
+    if (topic === 'agua_iot/sensores/presion' || topic === 'agua_iot/sensores_presion/1') {
         sistemaEstado.presion = valor;
-    else if (topic === 'agua_iot/sensores/flujo' || topic === 'agua_iot/sensores_presion/2')
+        pushBuffer(pressureBuffer, valor); // GAP 6: buffer para derivada
+    } else if (topic === 'agua_iot/sensores/flujo' || topic === 'agua_iot/sensores_presion/2') {
         sistemaEstado.flujo = valor;
-    else if (topic === 'agua_iot/calidad/turbidez')
-        sistemaEstado.turbidez = valor;
-    else if (topic === 'agua_iot/tanque_calle/nivel' || topic === 'agua_iot/nivel/lectura_2')
+        pushBuffer(flowBuffer, valor);
+    } else if (topic === 'agua_iot/tanque_calle/nivel' || topic === 'agua_iot/nivel/lectura_2') {
         sistemaEstado.tankCalle = valor;
-    else if (topic === 'agua_iot/tanque_lluvia/nivel' || topic === 'agua_iot/nivel/lectura')
+        pushBuffer(levelCalleBuf, valor);
+    } else if (topic === 'agua_iot/tanque_lluvia/nivel' || topic === 'agua_iot/nivel/lectura') {
         sistemaEstado.tankLluvia = valor;
-    else if (topic === 'agua_iot/actuadores/bomba_calle')     sistemaEstado.bombaCalle     = valor === 1;
+        pushBuffer(levelLluviaBuf, valor);
+    } else if (topic === 'agua_iot/actuadores/bomba_calle')     sistemaEstado.bombaCalle     = valor === 1;
     else if (topic === 'agua_iot/actuadores/solenoide_calle') sistemaEstado.solenoideCalle = valor === 1;
     else if (topic === 'agua_iot/actuadores/bomba_lluvia')    sistemaEstado.bombaLluvia    = valor === 1;
     else if (topic === 'agua_iot/actuadores/solenoide_lluvia') sistemaEstado.soleLluvia    = valor === 1;
@@ -212,9 +335,64 @@ function autoComando(topicActuador, valor, razon) {
 }
 
 function autoNotificacion(tipo, datos = {}) {
-    const notif = JSON.stringify({ type: tipo, automated: true, ...datos });
+    // GAP 10: Enriquecer con valores numéricos actuales
+    const enriched = {
+        ...datos,
+        _presion     : sistemaEstado.presion,
+        _flujo       : sistemaEstado.flujo,
+        _tankCalle   : sistemaEstado.tankCalle,
+        _tankLluvia  : sistemaEstado.tankLluvia,
+        _fuenteActiva: getFuenteActiva(),
+    };
+    const notif = JSON.stringify({ type: tipo, automated: true, ...enriched });
     client.publish('agua_iot/notificaciones', notif, { qos: 1 });
-    console.log(`🔔 AUTO-NOTIF: ${tipo}`, datos);
+    console.log(`🔔 AUTO-NOTIF: ${tipo}`, enriched);
+
+    // GAP 2: Persistir evento de falla en MySQL
+    guardarFaultEvent(tipo, enriched);
+
+    // ── Disparar email para alertas críticas ──────────────────────────────────
+    const s = sistemaEstado;
+    if (tipo === 'failover_automatico') {
+        enviarAlertaEmail(tipo,
+            `⚠️ WaterSmart — Cambio de fuente automático`,
+            `<h3 style="color:#ffa500">⚠️ Failover Automático Ejecutado</h3>
+             <p>El sistema cambió automáticamente de fuente de agua.</p>
+             <table style="width:100%;border-collapse:collapse">
+               <tr><td style="color:#8b949e;padding:8px">Razón:</td><td style="color:#e6edf3">${datos.razon || '—'}</td></tr>
+               <tr><td style="color:#8b949e;padding:8px">De:</td><td style="color:#e6edf3">${datos.de || '—'}</td></tr>
+               <tr><td style="color:#8b949e;padding:8px">A:</td><td style="color:#e6edf3">${datos.a || '—'}</td></tr>
+               <tr><td style="color:#8b949e;padding:8px">Presión:</td><td style="color:#e6edf3">${s.presion.toFixed(1)} PSI</td></tr>
+               <tr><td style="color:#8b949e;padding:8px">Flujo:</td><td style="color:#e6edf3">${s.flujo.toFixed(2)} L/min</td></tr>
+             </table>`);
+    } else if (tipo === 'sin_fuente_disponible') {
+        enviarAlertaEmail(tipo,
+            `🚨 WaterSmart — CRÍTICO: Sistema detenido`,
+            `<h3 style="color:#ff4444">🚨 SISTEMA DETENIDO — Sin fuente disponible</h3>
+             <p style="color:#ff6b6b">Ambas fuentes de agua han fallado. El sistema está completamente detenido.</p>
+             <p><b>Razón:</b> ${datos.razon || '—'}</p>
+             <p><b>Tanque Calle:</b> ${s.tankCalle.toFixed(0)}% | <b>Tanque Lluvia:</b> ${s.tankLluvia.toFixed(0)}%</p>
+             <p style="color:#ffa500">Se requiere intervención manual inmediata.</p>`);
+    } else if (tipo === 'rotura_tuberia') {
+        enviarAlertaEmail(tipo,
+            `⛔ WaterSmart — Rotura/bloqueo detectado`,
+            `<h3 style="color:#ff4444">⛔ Rotura o Bloqueo de Tubería</h3>
+             <p>Se detectó una anomalía en la línea de <b>${datos.fuente || '—'}</b>.</p>
+             <p><b>Flujo:</b> ${s.flujo.toFixed(2)} L/min (esperado > 0.1) | <b>Presión:</b> ${s.presion.toFixed(1)} PSI</p>`);
+    } else if (tipo === 'presion_critica_alta') {
+        enviarAlertaEmail(tipo,
+            `⚠️ WaterSmart — Presión peligrosa`,
+            `<h3 style="color:#ffa500">⚠️ Presión Crítica Alta</h3>
+             <p>Se detectó presión por encima del umbral seguro.</p>
+             <p><b>Presión:</b> ${datos.presion || s.presion.toFixed(1)} PSI (límite: ${datos.limite || s.MAX_PRESION} PSI)</p>
+             <p>La bomba fue detenida automáticamente para proteger las tuberías.</p>`);
+    } else if (tipo === 'tanque_vacio') {
+        enviarAlertaEmail(tipo,
+            `🔴 WaterSmart — Tanque vacío detectado`,
+            `<h3 style="color:#ff4444">🔴 Tanque Vacío</h3>
+             <p>El sensor físico confirmó que el tanque de <b>${datos.fuente || '—'}</b> está vacío.</p>
+             <p>El sistema procedió a conmutar automáticamente si hay fuente de respaldo disponible.</p>`);
+    }
 }
 
 // ── Determinar fuente activa ─────────────────────────────────────────────────
@@ -296,8 +474,23 @@ function evaluarReglasInteligentes(topic) {
         const fuenteActiva = getFuenteActiva();
         console.log(`⚠️ Presión muy alta (${s.presion} PSI) — deteniendo bomba ${fuenteActiva}`);
         autoComando(`agua_iot/actuadores/bomba_${fuenteActiva}`, 0, 'presion_alta');
-        autoNotificacion('presion_critica_alta', { presion: s.presion, fuente: fuenteActiva });
+        autoNotificacion('presion_critica_alta', { presion: s.presion, fuente: fuenteActiva, limite: s.MAX_PRESION });
         return;
+    }
+
+    // ── GAP 6: Tendencia de presión — subida rápida (>3 PSI/s) ──────────
+    if (sistemaActivo) {
+        const dPdt = getRateOfChange(pressureBuffer); // PSI/segundo
+        if (dPdt > 3.0 && s.presion > (s.MAX_PRESION * 0.75)) {
+            const fuenteActiva = getFuenteActiva();
+            console.log(`⚡ Presión subiendo rápido (${dPdt.toFixed(2)} PSI/s) — pre-alerta en ${fuenteActiva}`);
+            autoNotificacion('tendencia_presion_alta', {
+                fuente    : fuenteActiva,
+                presion   : s.presion,
+                tasa_cambio: dPdt.toFixed(2),
+                mensaje   : `Presión subiendo ${dPdt.toFixed(1)} PSI/s — posible golpe de ariete`,
+            });
+        }
     }
 
     // ── Regla 2: Fuga (flujo activo con sistema apagado) ──────────────────
@@ -308,16 +501,41 @@ function evaluarReglasInteligentes(topic) {
 
     if (!sistemaActivo) return; // Resto de reglas requieren sistema activo
 
+    // ── GAP 7: Correlación nivel-flujo (sensor atascado vs rotura real) ───
+    // Si el nivel del tanque activo cae rápido (>2%/min) pero el flujo reporta 0
+    // → el sensor de flujo puede estar atascado (no es rotura real).
+    const fuenteActiva = getFuenteActiva();
+    if (fuenteActiva) {
+        const levelBuf = fuenteActiva === 'calle' ? levelCalleBuf : levelLluviaBuf;
+        const dNdt = getRateOfChange(levelBuf); // %/segundo
+        const dNdtPerMin = dNdt * 60; // %/minuto
+        if (dNdtPerMin < -2.0 && s.flujo < 0.05) {
+            console.log(`🔧 [Correlación] Nivel cayendo (${dNdtPerMin.toFixed(2)}%/min) pero flujo=0 → posible sensor flujo atascado`);
+            autoNotificacion('sensor_flujo_posiblemente_atascado', {
+                fuente       : fuenteActiva,
+                caida_nivel  : dNdtPerMin.toFixed(2),
+                flujo        : s.flujo,
+                mensaje      : `Nivel cae ${Math.abs(dNdtPerMin).toFixed(1)}%/min con flujo=0 — verificar sensor de caudal`,
+            });
+        }
+    }
+
     // ── Regla 1: Rotura de tubería (flujo cero con sistema activo 30s) ────
     const solAbierto = s.solenoideCalle || s.soleLluvia;
     if (solAbierto && s.flujo < 0.1) {
         if (!s.flujoZeroDesde) {
             s.flujoZeroDesde = now;
         } else if (now - s.flujoZeroDesde >= s.WINDOW_ROTURA) {
-            const fuenteActiva = getFuenteActiva();
-            console.log(`⛔ Flujo cero ${Math.round((now-s.flujoZeroDesde)/1000)}s — rotura en ${fuenteActiva}`);
-            autoNotificacion('rotura_tuberia', { fuente: fuenteActiva });
-            ejecutarFailover(`rotura_tuberia_${fuenteActiva}`);
+            const fa = getFuenteActiva();
+            const elapsed = Math.round((now - s.flujoZeroDesde) / 1000);
+            console.log(`⛔ Flujo cero ${elapsed}s — rotura en ${fa}`);
+            autoNotificacion('rotura_tuberia', {
+                fuente  : fa,
+                elapsed : elapsed,
+                presion : s.presion,
+                mensaje : `Flujo=0 por ${elapsed}s con bomba activa en ${fa} (Presión: ${s.presion.toFixed(1)} PSI)`,
+            });
+            ejecutarFailover(`rotura_tuberia_${fa}`);
         }
     } else {
         s.flujoZeroDesde = null; // Reset si flujo volvió
@@ -328,9 +546,10 @@ function evaluarReglasInteligentes(topic) {
         if (!s.presionBajaDesde) {
             s.presionBajaDesde = now;
         } else if (now - s.presionBajaDesde >= s.WINDOW_PRESION) {
-            const fuenteActiva = getFuenteActiva();
-            console.log(`⚠️ Presión baja ${Math.round((now-s.presionBajaDesde)/1000)}s — failover desde ${fuenteActiva}`);
-            ejecutarFailover(`presion_baja_${fuenteActiva}`);
+            const fa = getFuenteActiva();
+            const elapsed = Math.round((now - s.presionBajaDesde) / 1000);
+            console.log(`⚠️ Presión baja ${elapsed}s — failover desde ${fa}`);
+            ejecutarFailover(`presion_baja_${fa}`);
         }
     } else {
         s.presionBajaDesde = null;
@@ -397,19 +616,23 @@ client.on('message', async (topic, message) => {
         // --- 🧠 Motor de Reglas Inteligentes ---
         // 1. Actualizar el estado interno del motor con el nuevo valor
         syncEstado(topic, valor);
-        // 2. Evaluar todas las reglas contra el estado actualizado
-        evaluarReglasInteligentes(topic);
+        // 2. Evaluar reglas SOLO si el modo prueba NO está activo
+        if (!modoPrueba) {
+            evaluarReglasInteligentes(topic);
+        } else {
+            console.log(`🧪 MODO PRUEBA: reglas omitidas para ${topic}`);
+        }
 
         // --- Evaluación de umbrales y notificaciones ---
         // Publica a agua_iot/notificaciones cuando se detecta un valor crítico.
         // Flutter escucha este tópico para disparar alertas verificadas por el bridge.
 
-        // 🔔 Turbidez crítica
-        if (topic === 'agua_iot/calidad/turbidez' && valor > 50) {
-            const notif = JSON.stringify({ type: 'turbidez_critica', value: valor });
-            client.publish('agua_iot/notificaciones', notif, { qos: 1 });
-            console.log(`🔔 Notificación enviada → turbidez_critica: ${valor} NTU`);
-        }
+        // 🔔 Turbidez crítica — DESACTIVADO: sensor no verificado en hardware actual
+        // if (topic === 'agua_iot/calidad/turbidez' && valor > 50) {
+        //     const notif = JSON.stringify({ type: 'turbidez_critica', value: valor });
+        //     client.publish('agua_iot/notificaciones', notif, { qos: 1 });
+        //     console.log(`🔔 Notificación enviada → turbidez_critica: ${valor} NTU`);
+        // }
 
         // 🔔 Presión baja — cubre tanto el simulador (legacy) como el ESP32 real
         if (
@@ -445,7 +668,7 @@ const API_PORT = process.env.API_PORT || 3001;
 const server = http.createServer(async (req, res) => {
     // CORS headers para Flutter Web
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Content-Type', 'application/json');
 
@@ -479,6 +702,247 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    // ── GET /api/consumo/hoy — Consumo del día actual en tiempo real ──────────
+    // Calcula litros de lluvia y calle consumidos hoy desde lecturas de nivel.
+    // Fórmula: Σ(caídas de nivel > 0.5% y < 15%) × capacidad_tanque / 100
+    if (req.url === '/api/consumo/hoy' && req.method === 'GET') {
+        try {
+            if (!pool) { res.writeHead(503); return res.end(JSON.stringify({ error: 'DB no disponible' })); }
+
+            // Leer niveles de lluvia (id=3) y calle (id=4) de las últimas 24h
+            const [rainRows] = await pool.execute(`
+                SELECT valor, fecha FROM lecturas
+                WHERE id_componente = 3 AND fecha >= NOW() - INTERVAL 24 HOUR
+                ORDER BY fecha ASC
+            `);
+            const [streetRows] = await pool.execute(`
+                SELECT valor, fecha FROM lecturas
+                WHERE id_componente = 4 AND fecha >= NOW() - INTERVAL 24 HOUR
+                ORDER BY fecha ASC
+            `);
+            const [faultRows] = await pool.execute(`
+                SELECT COUNT(*) as total FROM fault_events
+                WHERE fecha >= NOW() - INTERVAL 24 HOUR
+            `);
+
+            // Función: acumular caídas válidas de nivel
+            function calcLitros(rows, capacidad = 200) {
+                let litros = 0;
+                for (let i = 1; i < rows.length; i++) {
+                    const delta = rows[i - 1].valor - rows[i].valor;
+                    if (delta >= 0.5 && delta <= 15) {
+                        litros += (delta * capacidad) / 100;
+                    }
+                }
+                return Math.round(litros * 10) / 10;
+            }
+
+            const litrosLluvia  = calcLitros(rainRows);
+            const litrosCalle   = calcLitros(streetRows);
+            const total         = litrosLluvia + litrosCalle;
+            const eficiencia    = total > 0 ? Math.round((litrosLluvia / total) * 1000) / 10 : 0;
+
+            // Calcular hora pico desde lluvia + calle combinados
+            const allLevels = [...rainRows, ...streetRows]
+                .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+            const buckets = {};
+            for (let i = 1; i < allLevels.length; i++) {
+                const delta = allLevels[i-1].valor - allLevels[i].valor;
+                if (delta > 0) {
+                    const h = new Date(allLevels[i].fecha).getHours();
+                    buckets[h] = (buckets[h] || 0) + delta;
+                }
+            }
+            let peakHour = '--:--';
+            if (Object.keys(buckets).length > 0) {
+                const peakH = Object.entries(buckets).reduce((a, b) => b[1] > a[1] ? b : a)[0];
+                peakHour = String(peakH).padStart(2, '0') + ':00';
+            }
+
+            res.writeHead(200);
+            res.end(JSON.stringify({
+                fecha          : new Date().toISOString().split('T')[0],
+                litros_lluvia  : litrosLluvia,
+                litros_calle   : litrosCalle,
+                total_litros   : total,
+                eficiencia_pct : eficiencia,
+                hora_pico      : peakHour,
+                fallas_hoy     : faultRows[0].total,
+                muestras       : rainRows.length + streetRows.length,
+                generado_en    : new Date().toISOString(),
+            }));
+        } catch (err) {
+            console.error('❌ Error en /api/consumo/hoy:', err.message);
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+    }
+
+    // ── GET /api/consumo/historico?dias=7 — Historial diario de consumo ───────
+    // Devuelve resumen de litros por día para los últimos N días (default 7).
+    if (req.url.startsWith('/api/consumo/historico') && req.method === 'GET') {
+        try {
+            if (!pool) { res.writeHead(503); return res.end(JSON.stringify({ error: 'DB no disponible' })); }
+
+            const params  = new URL(req.url, 'http://localhost').searchParams;
+            const dias    = Math.min(parseInt(params.get('dias') || '7', 10), 90);
+            const cap     = parseInt(params.get('capacidad') || '200', 10);
+
+            // Lecturas de nivel agrupadas por día
+            const [rainDays] = await pool.execute(`
+                SELECT DATE(fecha) as dia, valor, fecha
+                FROM lecturas
+                WHERE id_componente = 3
+                  AND fecha >= NOW() - INTERVAL ? DAY
+                ORDER BY fecha ASC
+            `, [dias]);
+
+            const [streetDays] = await pool.execute(`
+                SELECT DATE(fecha) as dia, valor, fecha
+                FROM lecturas
+                WHERE id_componente = 4
+                  AND fecha >= NOW() - INTERVAL ? DAY
+                ORDER BY fecha ASC
+            `, [dias]);
+
+            // Agrupar por día
+            function groupByDay(rows) {
+                const map = {};
+                rows.forEach(r => {
+                    const d = r.dia || r.fecha?.toString().split('T')[0];
+                    if (!map[d]) map[d] = [];
+                    map[d].push(r);
+                });
+                return map;
+            }
+
+            function calcLitrosDia(rows, capacidad) {
+                let litros = 0;
+                for (let i = 1; i < rows.length; i++) {
+                    const delta = rows[i-1].valor - rows[i].valor;
+                    if (delta >= 0.5 && delta <= 15) litros += (delta * capacidad) / 100;
+                }
+                return Math.round(litros * 10) / 10;
+            }
+
+            const rainMap   = groupByDay(rainDays);
+            const streetMap = groupByDay(streetDays);
+
+            // Construir lista de los últimos N días
+            const resultado = [];
+            for (let i = dias - 1; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const dStr = d.toISOString().split('T')[0];
+                const lr = calcLitrosDia(rainMap[dStr] || [], cap);
+                const lc = calcLitrosDia(streetMap[dStr] || [], cap);
+                const tot = lr + lc;
+                resultado.push({
+                    fecha          : dStr,
+                    litros_lluvia  : lr,
+                    litros_calle   : lc,
+                    total_litros   : tot,
+                    eficiencia_pct : tot > 0 ? Math.round((lr / tot) * 1000) / 10 : 0,
+                });
+            }
+
+            res.writeHead(200);
+            res.end(JSON.stringify(resultado));
+        } catch (err) {
+            console.error('❌ Error en /api/consumo/historico:', err.message);
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+    }
+
+    // ── GAP 1: GET /api/thresholds — Umbrales adaptativos desde histórico ────
+    // Calcula P10/P90 de lecturas de presión y flujo de los últimos 7 días.
+    if (req.url === '/api/thresholds' && req.method === 'GET') {
+        try {
+            if (!pool) {
+                res.writeHead(503);
+                return res.end(JSON.stringify({ error: 'DB no disponible' }));
+            }
+            // Leer lecturas de presión (id=1) y flujo (id=2) de los últimos 7 días
+            const [presRows] = await pool.execute(`
+                SELECT valor FROM lecturas
+                WHERE id_componente = 1
+                  AND fecha >= NOW() - INTERVAL 7 DAY
+                  AND valor > 0
+                ORDER BY valor ASC
+            `);
+            const [flowRows] = await pool.execute(`
+                SELECT valor FROM lecturas
+                WHERE id_componente = 2
+                  AND fecha >= NOW() - INTERVAL 7 DAY
+                  AND valor > 0.1
+                ORDER BY valor ASC
+            `);
+
+            function percentile(sorted, p) {
+                if (sorted.length === 0) return null;
+                const idx = Math.floor(sorted.length * p);
+                return sorted[Math.min(idx, sorted.length - 1)].valor;
+            }
+
+            const presP10  = percentile(presRows, 0.10);
+            const presP90  = percentile(presRows, 0.90);
+            const flowP10  = percentile(flowRows, 0.10);
+            const flowP90  = percentile(flowRows, 0.90);
+
+            const thresholds = {
+                pressure: {
+                    p10          : presP10,
+                    p90          : presP90,
+                    adaptiveMin  : presP10 !== null ? Math.max(presP10 * 0.7, 5)  : 10,
+                    adaptiveMax  : presP90 !== null ? Math.min(presP90 * 1.3, 55) : 45,
+                    sampleCount  : presRows.length,
+                },
+                flow: {
+                    p10         : flowP10,
+                    p90         : flowP90,
+                    adaptiveMin : flowP10 !== null ? Math.max(flowP10 * 0.5, 0.1) : 0.5,
+                    sampleCount : flowRows.length,
+                },
+                generatedAt : new Date().toISOString(),
+                windowDays  : 7,
+            };
+
+            res.writeHead(200);
+            res.end(JSON.stringify(thresholds));
+        } catch (err) {
+            console.error('❌ Error en /api/thresholds:', err.message);
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+    }
+
+    // ── GAP 2: GET /api/fault-history — Historial de fallas recientes ────────
+    if (req.url.startsWith('/api/fault-history') && req.method === 'GET') {
+        try {
+            if (!pool) {
+                res.writeHead(503);
+                return res.end(JSON.stringify({ error: 'DB no disponible' }));
+            }
+            const [rows] = await pool.execute(`
+                SELECT fault_type, fuente_activa, presion, flujo, detalles, fecha
+                FROM fault_events
+                WHERE fecha >= NOW() - INTERVAL 7 DAY
+                ORDER BY fecha DESC
+                LIMIT 100
+            `);
+            res.writeHead(200);
+            res.end(JSON.stringify(rows));
+        } catch (err) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+    }
+
     // GET /api/health — Health check
     if (req.url === '/api/health' && req.method === 'GET') {
         res.writeHead(200);
@@ -486,8 +950,67 @@ const server = http.createServer(async (req, res) => {
             status: 'ok',
             mqtt: client.connected ? 'connected' : 'disconnected',
             db: pool ? 'ready' : 'not_ready',
-            uptime: process.uptime()
+            uptime: process.uptime(),
+            testMode: modoPrueba
         }));
+        return;
+    }
+
+    // GET /api/test-mode — Leer estado actual del modo prueba
+    if (req.url === '/api/test-mode' && req.method === 'GET') {
+        res.writeHead(200);
+        res.end(JSON.stringify({ testMode: modoPrueba }));
+        return;
+    }
+
+    // POST /api/test-mode — Activar o desactivar modo prueba
+    if (req.url === '/api/test-mode' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+            try {
+                const { active } = JSON.parse(body);
+                modoPrueba = Boolean(active);
+                console.log(`🧪 Modo Prueba ${modoPrueba ? 'ACTIVADO ⚠️' : 'DESACTIVADO ✅'} via HTTP`);
+                res.writeHead(200);
+                res.end(JSON.stringify({ testMode: modoPrueba }));
+            } catch (e) {
+                res.writeHead(400);
+                res.end(JSON.stringify({ error: 'Body inválido. Enviar: {"active": true|false}' }));
+            }
+        });
+        return;
+    }
+
+    // ── POST /api/test-email — enviar email de prueba ────────────────────────────────────
+    if (req.method === 'POST' && req.url === '/api/test-email') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', async () => {
+            try {
+                // Forzar email ignorando cooldown (es una prueba)
+                const saved = { ...emailCooldowns };
+                Object.keys(emailCooldowns).forEach(k => delete emailCooldowns[k]);
+
+                await enviarAlertaEmail('test',
+                    '🧪 WaterSmart — Email de Prueba',
+                    `<h3 style="color:#00e5ff">🧪 Email de Prueba</h3>
+                     <p>Este es un correo de prueba enviado desde el panel de Water Smart System.</p>
+                     <p>Si recibes este mensaje, el sistema de alertas por email está funcionando correctamente.</p>
+                     <p style="color:#8b949e">Configuración activa: <b>${process.env.EMAIL_TO}</b></p>`
+                );
+
+                // Restaurar cooldowns (para no bloquear alertas reales)
+                Object.assign(emailCooldowns, saved);
+                delete emailCooldowns['test'];
+
+                res.writeHead(200);
+                res.end(JSON.stringify({ ok: true, message: 'Email de prueba enviado' }));
+            } catch (e) {
+                res.writeHead(500);
+                res.end(JSON.stringify({ ok: false, error: e.message }));
+            }
+        });
         return;
     }
 
@@ -506,10 +1029,29 @@ const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws, req) => {
     wsClients.add(ws);
-    console.log(`\uD83D\uDD0C Flutter Web conectado via WS (${wsClients.size} cliente(s))`);
+    console.log(`🔌 Flutter Web conectado via WS (${wsClients.size} cliente(s))`);
 
     // Send connection confirmation
     ws.send(JSON.stringify({ type: 'connected', message: 'Bridge WS OK' }));
+
+    // ── Enviar snapshot del estado actual al nuevo cliente ────────────────────
+    // Problema raíz: los mensajes MQTT retenidos llegan al bridge ANTES de que
+    // Flutter abra el WebSocket → el estado actual nunca llega a la app.
+    // Solución: al conectar, reenviar todo el estado conocido inmediatamente.
+    const snapshot = [
+        { topic: 'agua_iot/actuadores/bomba_calle',       value: sistemaEstado.bombaCalle     ? 1 : 0 },
+        { topic: 'agua_iot/actuadores/solenoide_calle',   value: sistemaEstado.solenoideCalle ? 1 : 0 },
+        { topic: 'agua_iot/actuadores/bomba_lluvia',      value: sistemaEstado.bombaLluvia    ? 1 : 0 },
+        { topic: 'agua_iot/actuadores/solenoide_lluvia',  value: sistemaEstado.soleLluvia     ? 1 : 0 },
+        { topic: 'agua_iot/sensores_presion/1',           value: sistemaEstado.presion },
+        { topic: 'agua_iot/sensores_presion/2',           value: sistemaEstado.flujo },
+        { topic: 'agua_iot/tanque_calle/nivel',           value: sistemaEstado.tankCalle },
+        { topic: 'agua_iot/tanque_lluvia/nivel',          value: sistemaEstado.tankLluvia },
+    ];
+    snapshot.forEach(item => {
+        if (ws.readyState === 1) ws.send(JSON.stringify(item));
+    });
+    console.log(`📦 Snapshot enviado a nuevo cliente WS — bomba_calle=${sistemaEstado.bombaCalle}, sol_calle=${sistemaEstado.solenoideCalle}, bomba_lluvia=${sistemaEstado.bombaLluvia}, sol_lluvia=${sistemaEstado.soleLluvia}`);
 
     // Handle actuator commands from Flutter Web
     // Format: { "command": "bomba_calle" | "solenoide_calle" | etc, "value": "1"|"0" }

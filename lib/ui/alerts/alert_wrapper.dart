@@ -10,7 +10,7 @@ import '../shared/app_notifications.dart';
 /// Fires non-blocking floating toasts and logs events to EventLogNotifier.
 ///
 /// Alert gating policy:
-///   - CRITICAL alerts (Turbidez Crítica, Baja Presión) require
+///   - CRITICAL alerts (Baja Presión, Tanque vacío) require
 ///     `fromBridgeNotification == true` — they are only fired when the
 ///     Node.js bridge itself republishes the alert via `agua_iot/notificaciones`.
 ///   - WARNING / INFO alerts remain threshold-based.
@@ -119,13 +119,14 @@ class AlertWrapper extends ConsumerWidget {
             EventSeverity.critical,
           );
         }
-        if (next.turbidity > 50.0 && previous.turbidity <= 50.0) {
-          _fire(
-            context, ref,
-            '⛔  Turbidez crítica: ${next.turbidity.toStringAsFixed(1)} NTU',
-            EventSeverity.critical,
-          );
-        }
+        // DESACTIVADO: sensor de turbidez no verificado en hardware actual
+        // if (next.turbidity > 50.0 && previous.turbidity <= 50.0) {
+        //   _fire(
+        //     context, ref,
+        //     '⛔  Turbidez crítica: ${next.turbidity.toStringAsFixed(1)} NTU',
+        //     EventSeverity.critical,
+        //   );
+        // }
         // Tanque físicamente vacío (confirmado por reed switch S0 del ESP32)
         if (next.tanqueCalleVacio && !previous.tanqueCalleVacio) {
           _fire(
@@ -159,20 +160,15 @@ class AlertWrapper extends ConsumerWidget {
         );
       }
 
-      // ── Turbidity warning (threshold-based) ──────────────────────────
-      if (next.turbidity > 10.0 && previous.turbidity <= 10.0) {
-        _fire(
-          context, ref,
-          '⚠️  Turbidez elevada: ${next.turbidity.toStringAsFixed(1)} NTU',
-          EventSeverity.warning,
-        );
-      } else if (next.turbidity <= 10.0 && previous.turbidity > 10.0) {
-        _fire(
-          context, ref,
-          '✓ Calidad del agua normalizada',
-          EventSeverity.info,
-        );
-      }
+      // ── Turbidity warning ─────────────────────────────────────────────────────────
+      // DESACTIVADO: sensor de turbidez no verificado en hardware actual
+      // if (next.turbidity > 10.0 && previous.turbidity <= 10.0) {
+      //   _fire(context, ref,
+      //     '⚠️  Turbidez elevada: ${next.turbidity.toStringAsFixed(1)} NTU',
+      //     EventSeverity.warning);
+      // } else if (next.turbidity <= 10.0 && previous.turbidity > 10.0) {
+      //   _fire(context, ref, '✓ Calidad del agua normalizada', EventSeverity.info);
+      // }
 
       // ── Tank level alerts ─────────────────────────────────────────────
       if (next.rainTankLevel < 10.0 && previous.rainTankLevel >= 10.0) {

@@ -5,6 +5,8 @@ import 'data/services/preferences_service.dart';
 import 'ui/shell/app_shell.dart';
 import 'ui/alerts/alert_wrapper.dart';
 import 'ui/theme/app_theme.dart';
+import 'ui/auth/login_screen.dart';
+import 'domain/auth_provider.dart';
 
 /// Entry point — lightweight, no process spawning.
 ///
@@ -39,7 +41,24 @@ class WaterSmartApp extends StatelessWidget {
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.dark,
       builder: (context, child) => AlertWrapper(child: child),
-      home: const AppShell(),
+      home: const _AuthGate(),
+    );
+  }
+}
+
+// ── Auth Gate — shows login or app depending on auth state ────────────────────
+
+class _AuthGate extends ConsumerWidget {
+  const _AuthGate();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAuthenticated = ref.watch(authProvider);
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 500),
+      child: isAuthenticated
+          ? const AppShell(key: ValueKey('shell'))
+          : const LoginScreen(key: ValueKey('login')),
     );
   }
 }

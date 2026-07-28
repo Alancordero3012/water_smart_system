@@ -48,7 +48,6 @@ class MqttWaterRepository implements WaterDataRepository {
   // ESP32 hardware real — presión ADC y flujo por pulsos
   static const String _topicPresionReal    = 'agua_iot/sensores/presion';
   static const String _topicFlujoReal      = 'agua_iot/sensores/flujo';
-  static const String _topicTurbidez       = 'agua_iot/calidad/turbidez';
   // Actuadores — legacy
   static const String _topicBomba          = 'agua_iot/actuadores/bomba';
   static const String _topicSolenoide      = 'agua_iot/actuadores/solenoide';
@@ -124,7 +123,6 @@ class MqttWaterRepository implements WaterDataRepository {
       _topicLluviaS0, _topicLluviaS50, _topicLluviaS100,
       // ESP32 hardware real — presión y flujo
       _topicPresionReal, _topicFlujoReal,
-      _topicTurbidez,
       // Actuadores legacy
       _topicBomba, _topicSolenoide,
       // Actuadores hardware real (Fuente 1 = calle, Fuente 2 = lluvia)
@@ -168,7 +166,6 @@ class MqttWaterRepository implements WaterDataRepository {
       case _topicTanqueLluvia: next = next.copyWith(rainTankLevel: value);   break;
       case _topicNivelCalle:
       case _topicTanqueCalle:  next = next.copyWith(streetTankLevel: value); break;
-      case _topicTurbidez:     next = next.copyWith(turbidity: value); break;
       // Reed switches individuales — Tanque Calle (1 = agua detectada, 0 = seco)
       case _topicCalleS0:   next = next.copyWith(calleS0:   value > 0.5); break;
       case _topicCalleS50:  next = next.copyWith(calleS50:  value > 0.5); break;

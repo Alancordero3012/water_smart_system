@@ -1,14 +1,62 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import '../../domain/models/app_event.dart';
 import '../../domain/event_log_provider.dart';
 
 /// EndDrawer panel showing the in-session event timeline.
-class EventLogPanel extends ConsumerWidget {
+class EventLogPanel extends ConsumerStatefulWidget {
   const EventLogPanel({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<EventLogPanel> createState() => _EventLogPanelState();
+}
+
+class _EventLogPanelState extends ConsumerState<EventLogPanel> {
+  bool _sendingTest = false;
+
+  Future<void> _sendTestEmail(BuildContext context) async {
+    if (_sendingTest) return;
+    setState(() => _sendingTest = true);
+    try {
+      // Siempre apuntar al backend Node.js en el puerto 3001
+      final uri = Uri.parse('http://localhost:3001/api/test-email');
+      final resp = await http.post(uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({}));
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Row(
+          children: [
+            Icon(data['ok'] == true ? Icons.check_circle : Icons.error,
+                color: data['ok'] == true ? Colors.greenAccent : Colors.redAccent,
+                size: 16),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(data['ok'] == true
+                  ? '✅ Email de prueba enviado a ${data['message'] ?? ''}.'
+                  : '❌ Error: ${data['error'] ?? 'desconocido'}'),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF1E1E2E),
+        duration: const Duration(seconds: 4),
+      ));
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('❌ No se pudo conectar al backend: $e'),
+        backgroundColor: Colors.redAccent.withAlpha(200),
+      ));
+    } finally {
+      if (mounted) setState(() => _sendingTest = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final events = ref.watch(eventLogProvider);
 
     return Drawer(
@@ -36,6 +84,21 @@ class EventLogPanel extends ConsumerWidget {
                     ),
                   ),
                   const Spacer(),
+                  // Botón test email
+                  Tooltip(
+                    message: 'Enviar email de prueba',
+                    child: _sendingTest
+                        ? const SizedBox(
+                            width: 18, height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                                color: Color(0xFF00E5FF)))
+                        : IconButton(
+                            icon: const Icon(Icons.mail_outline_rounded,
+                                size: 18, color: Color(0xFF00E5FF)),
+                            onPressed: () => _sendTestEmail(context),
+                          ),
+                  ),
                   if (events.isNotEmpty)
                     IconButton(
                       icon: const Icon(Icons.delete_sweep_outlined,

@@ -34,6 +34,7 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
     final asyncState  = ref.watch(waterSystemAsyncProvider);
     final history     = ref.watch(sparklineHistoryProvider);
     final isSimulation = ref.watch(useSimulationProvider);
+    final isTestMode  = ref.watch(testModeProvider);
 
     // Solo usamos asyncState para detectar error real del bridge
     final hasError = asyncState is AsyncError;
@@ -41,19 +42,115 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Header ─────────────────────────────────────────────────
+    // ── Header ────────────────────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: Text(
-            'TELEMETRÍA EN VIVO',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: Colors.white.withAlpha(55),
-              letterSpacing: 2.5,
-            ),
+          child: Row(
+            children: [
+              Text(
+                'TELEMÉTRÍA EN VIVO',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white.withAlpha(55),
+                  letterSpacing: 2.5,
+                ),
+              ),
+              const Spacer(),
+              // ── Switch Modo Prueba ────────────────────────────────────
+              GestureDetector(
+                onTap: () {
+                  final next = !isTestMode;
+                  ref.read(testModeProvider.notifier).state = next;
+                  // Sincronizar con el motor de reglas del backend Node.js
+                  ref.read(bridgeHealthProvider.notifier).setTestMode(next);
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: isTestMode
+                        ? Colors.orange.withAlpha(30)
+                        : Colors.white.withAlpha(8),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isTestMode
+                          ? Colors.orange.withAlpha(120)
+                          : Colors.white.withAlpha(20),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isTestMode ? Icons.science : Icons.science_outlined,
+                        size: 12,
+                        color: isTestMode ? Colors.orange : Colors.white38,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        'MODO PRUEBA',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                          color: isTestMode ? Colors.orange : Colors.white38,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      // Mini LED indicator
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isTestMode ? Colors.orange : Colors.white24,
+                          boxShadow: isTestMode
+                              ? [BoxShadow(color: Colors.orange.withAlpha(180), blurRadius: 6)]
+                              : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
+
+        // ── Banner de advertencia Modo Prueba ─────────────────────────────
+        if (isTestMode)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.orange.withAlpha(18),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.withAlpha(70), width: 1),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 14),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      '⚠️ MODO PRUEBA ACTIVO — Reglas inteligentes desactivadas',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.orange,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
 
         // ── Bridge Status Banner (simulation mode only) ─────────────
         if (isSimulation) const _BridgeStatusBanner(),
@@ -90,7 +187,7 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
               const Spacer(),
               Row(
                 mainAxisSize: MainAxisSize.min,
-                children: List.generate(3, (i) {
+                children: List.generate(2, (i) {  // 2 tarjetas: Presión + Caudal
                   final active = i == _currentPage;
                   return AnimatedContainer(
                     duration: const Duration(milliseconds: 250),
@@ -125,7 +222,8 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
                       children: [
                         _card(_buildPressureCard(state, history)),
                         _card(_buildFlowCard(state, history)),
-                        _card(_buildTurbidityCard(state, history)),
+                        // DESACTIVADO: sensor de turbidez no verificado
+                        // _card(_buildTurbidityCard(state, history)),
                       ],
                     ),
                     if (_currentPage > 0)
@@ -137,7 +235,7 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
                           curve: Curves.easeInOutCubic,
                         ),
                       ),
-                    if (_currentPage < 2)
+                    if (_currentPage < 1)  // solo 2 páginas ahora
                       _HoverArrow(
                         alignment: Alignment.centerRight,
                         icon: Icons.chevron_right_rounded,
@@ -197,7 +295,7 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
     final isLow = s.streetPressure < 15;
     final color = isLow ? Colors.redAccent : const Color(0xFF00E5FF);
     return TelemetryCard(
-      title: 'PRESIÓN   1 / 3',
+      title: 'PRESIÓN   1 / 2',
       icon: Icons.speed,
       color: color,
       trailing: StatusPill(
@@ -214,7 +312,7 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
     final isActive = s.flowRate > 0;
     final color = isActive ? const Color(0xFF00E676) : Colors.grey;
     return TelemetryCard(
-      title: 'CAUDAL   2 / 3',
+      title: 'CAUDAL   2 / 2',
       icon: Icons.waves,
       color: color,
       trailing: StatusPill(
@@ -227,26 +325,29 @@ class _DashboardBodyState extends ConsumerState<DashboardBody> {
     );
   }
 
+  // DESACTIVADO: sensor de turbidez no verificado en hardware actual.
+  // ignore: unused_element
   Widget _buildTurbidityCard(WaterSystemState s, SparklineHistory h) {
-    final color = s.turbidity > 50
-        ? Colors.redAccent
-        : s.turbidity > 20
-            ? Colors.orange
-            : const Color(0xFF00E5FF);
-    final label = s.turbidity > 50
-        ? 'TURBIO'
-        : s.turbidity > 20
-            ? 'MODERADO'
-            : 'CRISTALINO';
-    return TelemetryCard(
-      title: 'TURBIDEZ   3 / 3',
-      icon: Icons.opacity,
-      color: color,
-      trailing: StatusPill(label: label, color: color),
-      sparkline: SparklineWidget(data: List.from(h.turbidity), color: color),
-      valueWidget: GlowValue(
-          rawValue: s.turbidity, unit: 'NTU', color: color, fontSize: 36),
-    );
+    // final color = s.turbidity > 50
+    //     ? Colors.redAccent
+    //     : s.turbidity > 20
+    //         ? Colors.orange
+    //         : const Color(0xFF00E5FF);
+    // final label = s.turbidity > 50
+    //     ? 'TURBIO'
+    //     : s.turbidity > 20
+    //         ? 'MODERADO'
+    //         : 'CRISTALINO';
+    // return TelemetryCard(
+    //   title: 'TURBIDEZ   (DESACTIVADO)',
+    //   icon: Icons.opacity,
+    //   color: color,
+    //   trailing: StatusPill(label: label, color: color),
+    //   sparkline: SparklineWidget(data: List.from(h.turbidity), color: color),
+    //   valueWidget: GlowValue(
+    //       rawValue: s.turbidity, unit: 'NTU', color: color, fontSize: 36),
+    // );
+    return const SizedBox.shrink();
   }
 
   Widget _buildTanks(WaterSystemState state) => Padding(

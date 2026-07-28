@@ -14,6 +14,9 @@ final useSimulationProvider = StateProvider<bool>(
   (ref) => true,
 ); // Default true para demo
 
+// Toggle para Modo Prueba (bypass total de reglas inteligentes)
+final testModeProvider = StateProvider<bool>((ref) => false);
+
 // ── Health-gated repository selector ──────────────────────────────────────────
 
 /// A stub repository that immediately throws when stateStream is listened.
@@ -80,12 +83,16 @@ final smartRulesProvider = Provider<SmartRulesService>((ref) {
 });
 
 // Estado procesado (con reglas inteligentes aplicadas)
+// Si testModeProvider == true, se devuelve el estado RAW sin pasar por las reglas.
 final processedSystemStateProvider = Provider<WaterSystemState>((ref) {
   final rawStateAsync = ref.watch(waterSystemStreamProvider);
   final rulesService  = ref.watch(smartRulesProvider);
+  final isTestMode    = ref.watch(testModeProvider);
 
   return rawStateAsync.when(
-    data:    (state) => rulesService.evaluateRules(state),
+    data:    (state) => isTestMode
+        ? state                            // Bypass total — sin reglas
+        : rulesService.evaluateRules(state),
     loading: ()      => const WaterSystemState(),
     error:   (_, __) => const WaterSystemState(),
   );

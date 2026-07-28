@@ -157,16 +157,16 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
   //  Si se intenta encender una mientras la otra está activa, primero se apaga
   //  la activa y luego se enciende la nueva (con el debounce normal como buffer).
 
-  void toggle(FuenteType fuente) {
+  void toggle(FuenteType fuente, {bool bypassInterlock = false}) {
     if (state.pending != null) return;
 
     if (fuente == FuenteType.fuente1) {
       final desired = !state.fuente1Active;
       final value   = desired ? '1' : '0';
 
-      // ── INTERLOCK ────────────────────────────────────────────────────────
+      // ── INTERLOCK (salteado en modo prueba) ─────────────────────────────────────────
       // Si queremos ENCENDER Fuente 1 y Fuente 2 está activa → apagar Fuente 2
-      if (desired && state.fuente2Active) {
+      if (!bypassInterlock && desired && state.fuente2Active) {
         debugPrint('🔒 Interlock: apagando Fuente 2 (LLUVIA) → Fuente 1 (CALLE) tomará el control');
         _repo.sendCommand('bomba_lluvia',     '0');
         _repo.sendCommand('solenoide_lluvia', '0');
@@ -201,9 +201,9 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
       final desired = !state.fuente2Active;
       final value   = desired ? '1' : '0';
 
-      // ── INTERLOCK ────────────────────────────────────────────────────────
+      // ── INTERLOCK (salteado en modo prueba) ─────────────────────────────────────────
       // Si queremos ENCENDER Fuente 2 y Fuente 1 está activa → apagar Fuente 1
-      if (desired && state.fuente1Active) {
+      if (!bypassInterlock && desired && state.fuente1Active) {
         debugPrint('🔒 Interlock: apagando Fuente 1 (CALLE) → Fuente 2 (LLUVIA) tomará el control');
         _repo.sendCommand('bomba_calle',     '0');
         _repo.sendCommand('solenoide_calle', '0');
