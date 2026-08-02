@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/providers.dart';
+import '../../domain/auth_provider.dart';
 import '../../domain/actuator_notifier.dart';
 import '../dashboard/widgets/glow_value.dart';
 import '../dashboard/widgets/bomba_button.dart';
@@ -13,23 +14,39 @@ class ControlScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(processedSystemStateProvider);
-    final repo  = ref.read(waterDataRepositoryProvider);
+    final state     = ref.watch(processedSystemStateProvider);
+    final repo      = ref.read(waterDataRepositoryProvider);
+    final authState = ref.watch(authProvider);
+    final canControl = authState.user?.rol != 'viewer'; // viewer = solo lectura
+
+    // Escuchar bloqueos de interlock del backend
+    ref.listen(interlockStreamProvider, (_, next) {
+      next.whenData((msg) {
+        AppNotifications.show(
+          context,
+          '🔒 $msg',
+          type: NotificationType.warning,
+        );
+      });
+    });
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Banner de solo lectura para observadores
+          if (!canControl) const _ReadOnlyBanner(),
+
           _SectionHeader(title: 'CONTROL DE FUENTES', icon: Icons.power),
           const SizedBox(height: 10),
 
           // ── Fuente 1 + Fuente 2 cards ─────────────────────────────────
-          const Row(
+          Row(
             children: [
-              Expanded(child: _FuenteCard(type: FuenteType.fuente1)),
-              SizedBox(width: 10),
-              Expanded(child: _FuenteCard(type: FuenteType.fuente2)),
+              Expanded(child: _FuenteCard(type: FuenteType.fuente1, canControl: canControl)),
+              const SizedBox(width: 10),
+              Expanded(child: _FuenteCard(type: FuenteType.fuente2, canControl: canControl)),
             ],
           ),
 
@@ -38,7 +55,7 @@ class ControlScreen extends ConsumerWidget {
           // ── Botón Industrial Bomba ────────────────────────────────────
           _SectionHeader(title: 'CONTROL BOMBA PRINCIPAL', icon: Icons.power_settings_new),
           const SizedBox(height: 20),
-          const _BombaSection(),
+          _BombaSection(canControl: canControl),
 
           const SizedBox(height: 24),
           _SectionHeader(title: 'FUENTE DE AGUA', icon: Icons.water_drop),
@@ -46,14 +63,15 @@ class ControlScreen extends ConsumerWidget {
 
           _SourceSegmentedButton(
             current: state.activeSource,
-            onChanged: (v) {
+            canControl: canControl,
+            onChanged: canControl ? (v) {
               repo.sendCommand('source', v);
               AppNotifications.show(
                 context,
                 'Fuente cambiada → ${v == "lluvia" ? "Tanque Lluvia" : "Red Pública"}',
                 type: NotificationType.info,
               );
-            },
+            } : null,
           ),
 
           const SizedBox(height: 20),
@@ -152,51 +170,65 @@ class ControlScreen extends ConsumerWidget {
 
 // ── MQTT-Confirmed Fuente Card ─────────────────────────────────────────────────
 
-class _FuenteCard extends ConsumerWidget {
+class _FuenteCard extends ConsumerStatefulWidget {
   final FuenteType type;
-  const _FuenteCard({required this.type});
+  final bool canControl;
+  const _FuenteCard({required this.type, this.canControl = true});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_FuenteCard> createState() => _FuenteCardState();
+}
+
+class _FuenteCardState extends ConsumerState<_FuenteCard> {
+  @override
+  Widget build(BuildContext context) {
     final actuatorState = ref.watch(actuatorProvider);
     final isTestMode    = ref.watch(testModeProvider);
 
-    final bool isActive = switch (type) {
+    final bool isActive = switch (widget.type) {
       FuenteType.fuente1 => actuatorState.fuente1Active,
       FuenteType.fuente2 => actuatorState.fuente2Active,
     };
-    final bool isPending = actuatorState.pending == type;
+    final bool isPending = actuatorState.pending == widget.type;
 
-    final Color activeColor = switch (type) {
+    final Color activeColor = switch (widget.type) {
       FuenteType.fuente1 => const Color(0xFF00E676),
       FuenteType.fuente2 => const Color(0xFF00E5FF),
     };
-    final IconData icon = switch (type) {
-      FuenteType.fuente1 => Icons.power_settings_new,
-      FuenteType.fuente2 => Icons.device_hub,
+    final Color darkAccent = switch (widget.type) {
+      FuenteType.fuente1 => const Color(0xFF00A852),
+      FuenteType.fuente2 => const Color(0xFF0090A8),
     };
-    final String label = switch (type) {
+    final IconData icon = switch (widget.type) {
+      FuenteType.fuente1 => Icons.power_settings_new,
+      FuenteType.fuente2 => Icons.water_drop_outlined,
+    };
+    final String label = switch (widget.type) {
       FuenteType.fuente1 => 'Fuente Calle',
       FuenteType.fuente2 => 'Fuente Lluvia',
     };
-    final String subtitle = switch (type) {
-      FuenteType.fuente1 => isActive ? 'ENCENDIDA' : 'APAGADA',
-      FuenteType.fuente2 => isActive ? 'ENCENDIDA'  : 'APAGADA',
+    final String sublabel = switch (widget.type) {
+      FuenteType.fuente1 => 'Red Pública',
+      FuenteType.fuente2 => 'Tanque de Lluvia',
     };
 
-    final Color color = isActive ? activeColor : Colors.white24;
+    final Color borderColor = isPending
+        ? Colors.orange
+        : isActive
+            ? activeColor
+            : Colors.white.withAlpha(20);
 
     return GestureDetector(
-      onTap: isPending
+      onTap: (isPending || !widget.canControl)
           ? null
           : () {
-              // En Modo Prueba: bypassInterlock=true para poder encender
-              // cualquier fuente sin restricciones (util para probar hardware).
               ref.read(actuatorProvider.notifier).toggle(
-                type,
+                widget.type,
                 bypassInterlock: isTestMode,
               );
-              final fuenteName = type == FuenteType.fuente1 ? 'Fuente Calle' : 'Fuente Lluvia';
+              final fuenteName = widget.type == FuenteType.fuente1
+                  ? 'Fuente Calle'
+                  : 'Fuente Lluvia';
               AppNotifications.show(
                 context,
                 '$fuenteName → ${isActive ? "apagando Bomba + Solenoide" : "encendiendo Bomba + Solenoide"}'
@@ -205,85 +237,250 @@ class _FuenteCard extends ConsumerWidget {
               );
             },
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        padding: const EdgeInsets.all(14),
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: isActive
-              ? activeColor.withAlpha(12)
-              : const Color(0xFF1A1A2E),
-          borderRadius: BorderRadius.circular(12),
+          gradient: isActive
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    activeColor.withAlpha(28),
+                    darkAccent.withAlpha(10),
+                    const Color(0xFF13131A),
+                  ],
+                  stops: const [0.0, 0.4, 1.0],
+                )
+              : const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF1E1E2E), Color(0xFF13131A)],
+                ),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isPending
-                ? Colors.orange.withAlpha(80)
-                : color.withAlpha(70),
-            width: 1.5,
+            color: borderColor.withAlpha(isPending ? 160 : isActive ? 90 : 25),
+            width: isActive ? 1.5 : 1.0,
           ),
           boxShadow: isActive
-              ? [BoxShadow(color: activeColor.withAlpha(18), blurRadius: 14)]
-              : null,
+              ? [
+                  BoxShadow(
+                    color: activeColor.withAlpha(35),
+                    blurRadius: 20,
+                    spreadRadius: -2,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(60),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Top row: icon + status pill ──────────────────────────────
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(7),
+                // Icon container with glow
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 350),
+                  padding: const EdgeInsets.all(11),
                   decoration: BoxDecoration(
-                    color: color.withAlpha(18),
-                    shape: BoxShape.circle,
+                    color: isActive
+                        ? activeColor.withAlpha(30)
+                        : Colors.white.withAlpha(8),
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(
+                      color: isActive
+                          ? activeColor.withAlpha(60)
+                          : Colors.white.withAlpha(12),
+                    ),
+                    boxShadow: isActive
+                        ? [
+                            BoxShadow(
+                              color: activeColor.withAlpha(50),
+                              blurRadius: 12,
+                              spreadRadius: -2,
+                            )
+                          ]
+                        : null,
                   ),
                   child: Icon(
                     icon,
-                    color: color,
-                    size: 18,
+                    color: isActive ? activeColor : Colors.white38,
+                    size: 22,
                   ),
                 ),
                 const Spacer(),
+                // Status pill / pending indicator
                 if (isPending)
-                  SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.orange.withAlpha(200),
-                    ),
-                  )
+                  _PendingPill()
                 else
-                  Switch.adaptive(
-                    value: isActive,
-                    activeTrackColor: activeColor,
-                    onChanged: isPending
-                        ? null
-                        : (_) => ref
-                            .read(actuatorProvider.notifier)
-                            .toggle(type),
-                  ),
+                  _StatusPill(isActive: isActive, color: activeColor),
               ],
             ),
-            const SizedBox(height: 8),
+
+            const SizedBox(height: 16),
+
+            // ── Label ────────────────────────────────────────────────────
             Text(
               label,
               style: TextStyle(
-                color: Colors.white.withAlpha(180),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              isPending ? 'CONFIRMANDO...' : subtitle,
-              style: TextStyle(
-                color: isPending ? Colors.orange : color,
-                fontSize: 10,
+                color: isActive ? Colors.white.withAlpha(230) : Colors.white.withAlpha(140),
+                fontSize: 15,
                 fontWeight: FontWeight.w700,
-                fontFamily: 'monospace',
+                letterSpacing: 0.2,
               ),
             ),
+            const SizedBox(height: 3),
+            Text(
+              sublabel,
+              style: TextStyle(
+                color: Colors.white.withAlpha(60),
+                fontSize: 11,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+
+            // ── Active indicator bar + badges ─────────────────────────
             if (isActive) ...[
-              const SizedBox(height: 6),
-              _DualActuatorBadge(),
+              const SizedBox(height: 14),
+              Container(
+                height: 2,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [activeColor.withAlpha(180), Colors.transparent],
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 10),
+              _DualActuatorBadge(color: activeColor),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Status pill widget ─────────────────────────────────────────────────────────
+
+class _StatusPill extends StatelessWidget {
+  final bool isActive;
+  final Color color;
+  const _StatusPill({required this.isActive, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: isActive ? color.withAlpha(22) : Colors.white.withAlpha(8),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isActive ? color.withAlpha(80) : Colors.white.withAlpha(18),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: isActive ? color : Colors.white30,
+              shape: BoxShape.circle,
+              boxShadow: isActive
+                  ? [BoxShadow(color: color.withAlpha(120), blurRadius: 5)]
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            isActive ? 'ACTIVA' : 'INACTIVA',
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              color: isActive ? color : Colors.white38,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Pending pill widget ────────────────────────────────────────────────────────
+
+class _PendingPill extends StatefulWidget {
+  const _PendingPill();
+
+  @override
+  State<_PendingPill> createState() => _PendingPillState();
+}
+
+class _PendingPillState extends State<_PendingPill>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    )..repeat(reverse: true);
+    _fade = Tween<double>(begin: 0.3, end: 1.0).animate(_ctrl);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fade,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: Colors.orange.withAlpha(22),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.orange.withAlpha(80)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 8,
+              height: 8,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: Colors.orange,
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Text(
+              'SYNC',
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                color: Colors.orange,
+                letterSpacing: 1.2,
+              ),
+            ),
           ],
         ),
       ),
@@ -294,16 +491,17 @@ class _FuenteCard extends ConsumerWidget {
 // ── Dual actuator confirmation badge ──────────────────────────────────────────
 
 class _DualActuatorBadge extends StatelessWidget {
-  const _DualActuatorBadge();
+  final Color color;
+  const _DualActuatorBadge({required this.color});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _ActuatorDot(label: 'B', color: const Color(0xFF00E676)),
-        const SizedBox(width: 4),
-        _ActuatorDot(label: 'S', color: const Color(0xFF00E5FF)),
+        _ActuatorDot(label: 'BOMBA', color: const Color(0xFF00E676)),
+        const SizedBox(width: 6),
+        _ActuatorDot(label: 'SOLENOIDE', color: const Color(0xFF00E5FF)),
       ],
     );
   }
@@ -317,20 +515,35 @@ class _ActuatorDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withAlpha(20),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withAlpha(60)),
+        color: color.withAlpha(18),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withAlpha(50)),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 8,
-          fontWeight: FontWeight.w800,
-          color: color,
-          fontFamily: 'monospace',
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 4,
+            height: 4,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: color.withAlpha(120), blurRadius: 4)],
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 8,
+              fontWeight: FontWeight.w800,
+              color: color.withAlpha(200),
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -340,53 +553,123 @@ class _ActuatorDot extends StatelessWidget {
 
 class _SourceSegmentedButton extends StatelessWidget {
   final String current;
-  final ValueChanged<String> onChanged;
+  final ValueChanged<String>? onChanged;
+  final bool canControl;
 
   const _SourceSegmentedButton({
     required this.current,
-    required this.onChanged,
+    required this.canControl,
+    this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SegmentedButton<String>(
-      showSelectedIcon: false,
-      segments: const [
-        ButtonSegment(
-          value: 'lluvia',
-          label: Text('Tanque Lluvia'),
-          icon: Icon(Icons.cloud_queue, size: 16),
-        ),
-        ButtonSegment(
-          value: 'calle',
-          label: Text('Red Pública'),
-          icon: Icon(Icons.location_city, size: 16),
-        ),
-      ],
-      selected: {current},
-      style: ButtonStyle(
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: const VisualDensity(vertical: -1),
-        side: WidgetStateProperty.all(
-          BorderSide(color: Colors.white.withAlpha(20)),
-        ),
-        foregroundColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) return Colors.black;
-          return Colors.white54;
-        }),
-        backgroundColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return current == 'lluvia'
-                ? const Color(0xFF00B4D8)
-                : Colors.orange;
-          }
-          return const Color(0xFF1A1A2E);
-        }),
-        textStyle: WidgetStateProperty.all(
-          const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF13131A),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withAlpha(15)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(60),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(5),
+      child: Row(
+        children: [
+          _SourceOption(
+            value: 'lluvia',
+            label: 'Tanque Lluvia',
+            icon: Icons.water_drop_outlined,
+            activeColor: const Color(0xFF00B4D8),
+            isSelected: current == 'lluvia',
+            onTap: canControl ? () => onChanged?.call('lluvia') : null,
+          ),
+          const SizedBox(width: 5),
+          _SourceOption(
+            value: 'calle',
+            label: 'Red Pública',
+            icon: Icons.location_city_outlined,
+            activeColor: const Color(0xFFFFB74D),
+            isSelected: current == 'calle',
+            onTap: canControl ? () => onChanged?.call('calle') : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SourceOption extends StatelessWidget {
+  final String value;
+  final String label;
+  final IconData icon;
+  final Color activeColor;
+  final bool isSelected;
+  final VoidCallback? onTap; // null = deshabilitado (viewer)
+
+  const _SourceOption({
+    required this.value,
+    required this.label,
+    required this.icon,
+    required this.activeColor,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Opacity(
+        opacity: onTap == null ? 0.4 : 1.0,
+        child: GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(vertical: 13),
+            decoration: BoxDecoration(
+              color: isSelected ? activeColor.withAlpha(30) : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isSelected ? activeColor.withAlpha(80) : Colors.transparent,
+              ),
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: activeColor.withAlpha(35),
+                        blurRadius: 10,
+                        spreadRadius: -2,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 20,
+                  color: isSelected ? activeColor : Colors.white30,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isSelected ? activeColor : Colors.white38,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-      onSelectionChanged: (sel) => onChanged(sel.first),
     );
   }
 }
@@ -423,20 +706,37 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 12, color: const Color(0xFF00E5FF).withAlpha(110)),
-        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF00E5FF).withAlpha(18),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Icon(icon, size: 14, color: const Color(0xFF00E5FF).withAlpha(200)),
+        ),
+        const SizedBox(width: 10),
         Text(
           title,
           style: TextStyle(
-            fontSize: 10,
+            fontSize: 11,
             fontWeight: FontWeight.w700,
-            color: Colors.white.withAlpha(70),
-            letterSpacing: 1.5,
+            color: Colors.white.withAlpha(110),
+            letterSpacing: 1.8,
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10),
         Expanded(
-          child: Container(height: 1, color: Colors.white.withAlpha(10)),
+          child: Container(
+            height: 1,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF00E5FF).withAlpha(60),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -447,13 +747,14 @@ class _SectionHeader extends StatelessWidget {
 
 /// Contenedor con estética de panel de control industrial para el gran botón.
 class _BombaSection extends StatelessWidget {
-  const _BombaSection();
+  final bool canControl;
+  const _BombaSection({this.canControl = true});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
       decoration: BoxDecoration(
         // Fondo tipo panel metálico oscuro con veta sutil
         gradient: const LinearGradient(
@@ -512,7 +813,7 @@ class _BombaSection extends StatelessWidget {
           const SizedBox(height: 24),
 
           // Gran botón centrado
-          const Center(child: BombaButton()),
+          Center(child: BombaButton(canControl: canControl)),
 
           const SizedBox(height: 20),
 
@@ -590,6 +891,42 @@ class _SpecBadge extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.55),
               fontFamily: 'monospace',
               letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Read-Only Banner ──────────────────────────────────────────────────────────
+
+class _ReadOnlyBanner extends StatelessWidget {
+  const _ReadOnlyBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF9C88FF).withAlpha(15),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF9C88FF).withAlpha(50)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.visibility_outlined,
+              color: const Color(0xFF9C88FF).withAlpha(200), size: 16),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Modo observador — solo lectura. No tienes permisos para controlar actuadores.',
+              style: TextStyle(
+                color: const Color(0xFF9C88FF).withAlpha(200),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],

@@ -6,6 +6,11 @@ const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const nodemailer = require('nodemailer');
+const bcrypt = require('bcryptjs');
+const jwt    = require('jsonwebtoken');
+
+const JWT_SECRET  = process.env.JWT_SECRET || 'watersmart_jwt_secret_2024_change_in_prod';
+const JWT_EXPIRES = '30d';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ✉ EMAIL ALERTS (Nodemailer + Gmail SMTP)
@@ -86,7 +91,8 @@ async function initDB() {
         const connection = await pool.getConnection();
         console.log('✅ Conectado exitosamente a Aiven MySQL vía Pool');
         connection.release();
-        // ── Crear tabla fault_events si no existe (GAP 2: memoria de fallas) ──
+
+        // ── fault_events (tabla existente) ───────────────────────────────────────
         await pool.execute(`
             CREATE TABLE IF NOT EXISTS fault_events (
                 id            INT AUTO_INCREMENT PRIMARY KEY,
@@ -97,11 +103,81 @@ async function initDB() {
                 nivel_tank    FLOAT        DEFAULT NULL,
                 detalles      TEXT         DEFAULT NULL,
                 fecha         TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+                sistema_id    INT          DEFAULT 1,
                 INDEX idx_fault_type (fault_type),
                 INDEX idx_fecha (fecha)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         `);
         console.log('✅ Tabla fault_events lista');
+
+        // ── Multi-tenancy: sistemas ───────────────────────────────────────────────
+        await pool.execute(`
+            CREATE TABLE IF NOT EXISTS sistemas (
+                id           INT AUTO_INCREMENT PRIMARY KEY,
+                nombre       VARCHAR(100) NOT NULL,
+                descripcion  TEXT,
+                ubicacion    VARCHAR(200),
+                timezone     VARCHAR(50) DEFAULT 'America/Caracas',
+                topic_prefix VARCHAR(50) DEFAULT 'agua_iot',
+                activo       BOOLEAN DEFAULT TRUE,
+                creado_en    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+
+        // ── Multi-tenancy: usuarios ───────────────────────────────────────────────
+        await pool.execute(`
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id            INT AUTO_INCREMENT PRIMARY KEY,
+                nombre        VARCHAR(100) NOT NULL,
+                email         VARCHAR(150) NOT NULL UNIQUE,
+                password_hash VARCHAR(255) NOT NULL,
+                rol_global    ENUM('admin','operador','viewer') DEFAULT 'operador',
+                activo        BOOLEAN DEFAULT TRUE,
+                creado_en     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+
+        // ── Multi-tenancy: permisos usuario <-> sistema ───────────────────────────
+        await pool.execute(`
+            CREATE TABLE IF NOT EXISTS usuario_sistema (
+                usuario_id INT NOT NULL,
+                sistema_id INT NOT NULL,
+                rol        ENUM('admin','operador','viewer') DEFAULT 'operador',
+                PRIMARY KEY (usuario_id, sistema_id),
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+                FOREIGN KEY (sistema_id) REFERENCES sistemas(id)  ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        console.log('✅ Tablas multi-tenant listas (sistemas, usuarios, usuario_sistema)');
+
+        // ── Seed: sistema #1 ──────────────────────────────────────────────────────
+        await pool.execute(`
+            INSERT IGNORE INTO sistemas (id, nombre, descripcion, ubicacion, topic_prefix)
+            VALUES (1, 'WaterSmart Venezuela', 'Sistema principal', 'Venezuela', 'agua_iot')
+        `);
+
+        // ── Seed: usuario admin ────────────────────────────────────────────────────
+        const [adminRows] = await pool.execute(
+            'SELECT id FROM usuarios WHERE email = ?',
+            ['admin@watersmart.local']
+        );
+        if (adminRows.length === 0) {
+            const hash = await bcrypt.hash('WaterSmart2024', 12);
+            const [result] = await pool.execute(
+                `INSERT INTO usuarios (nombre, email, password_hash, rol_global)
+                 VALUES ('Administrador', 'admin@watersmart.local', ?, 'admin')`,
+                [hash]
+            );
+            await pool.execute(
+                `INSERT IGNORE INTO usuario_sistema (usuario_id, sistema_id, rol)
+                 VALUES (?, 1, 'admin')`,
+                [result.insertId]
+            );
+            console.log('✅ Usuario admin creado: admin@watersmart.local / WaterSmart2024');
+        } else {
+            console.log('ℹ️ Usuario admin ya existe en DB');
+        }
+
     } catch (error) {
         console.error('❌ Error inicializando DB:', error.message);
         if (error.code === 'ENOENT') {
@@ -111,6 +187,18 @@ async function initDB() {
         console.log('⏳ Reintentando conexión a DB en 5 segundos...');
         setTimeout(initDB, 5000);
     }
+}
+
+// ── JWT helpers ───────────────────────────────────────────────────────────────
+function signToken(payload) {
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+}
+function verifyToken(token) {
+    try { return jwt.verify(token, JWT_SECRET); } catch { return null; }
+}
+function extractToken(req) {
+    const auth = req.headers['authorization'] || '';
+    return auth.startsWith('Bearer ') ? auth.slice(7) : null;
 }
 
 // ── GAP 2: Guardar evento de falla en MySQL ───────────────────────────────────
@@ -175,11 +263,22 @@ const client = mqtt.connect(mqttUrl, mqttOptions);
 client.on('connect', () => {
     console.log('✅ Conectado a HiveMQ Cloud con éxito');
 
-    // ── Limpiar tópico de turbidez del broker (mensaje retenido vacío) ────────
-    // Publicar payload vacío con retain:true elimina el tópico del broker.
-    client.publish('agua_iot/calidad/turbidez', '', { retain: true, qos: 1 }, () => {
-        console.log('🧹 Tópico agua_iot/calidad/turbidez limpiado del broker');
+    // ── Limpiar mensajes retenidos de TODOS los actuadores al arrancar ───────────
+    // Publicar payload vacío con retain:true elimina el mensaje del broker.
+    // Esto evita que lleguen estados viejos (ej: bomba=1) al reconectarse.
+    const topicosALimpiar = [
+        'agua_iot/calidad/turbidez',
+        'agua_iot/actuadores/bomba',
+        'agua_iot/actuadores/solenoide',
+        'agua_iot/actuadores/bomba_calle',
+        'agua_iot/actuadores/solenoide_calle',
+        'agua_iot/actuadores/bomba_lluvia',
+        'agua_iot/actuadores/solenoide_lluvia',
+    ];
+    topicosALimpiar.forEach(t => {
+        client.publish(t, '', { retain: true, qos: 1 });
     });
+    console.log('🧹 Mensajes retenidos de actuadores limpiados del broker');
 
     const topics = [
         // ── Tópicos Legacy (simulador.js) ────────────────────────────────────
@@ -275,6 +374,7 @@ let modoPrueba = false;
 
 const sistemaEstado = {
     // Actuadores (sincronizados por echos MQTT)
+    bombaPrincipal: false,   // ← Bomba principal (agua_iot/actuadores/bomba)
     bombaCalle    : false,
     solenoideCalle: false,
     bombaLluvia   : false,
@@ -323,8 +423,8 @@ function syncEstado(topic, valor) {
     else if (topic === 'agua_iot/actuadores/solenoide_calle') sistemaEstado.solenoideCalle = valor === 1;
     else if (topic === 'agua_iot/actuadores/bomba_lluvia')    sistemaEstado.bombaLluvia    = valor === 1;
     else if (topic === 'agua_iot/actuadores/solenoide_lluvia') sistemaEstado.soleLluvia    = valor === 1;
-    // Legacy actuadores
-    else if (topic === 'agua_iot/actuadores/bomba')     sistemaEstado.bombaCalle     = valor === 1;
+    // Bomba principal (standalone) — NO afecta bombaCalle ni bombaLluvia
+    else if (topic === 'agua_iot/actuadores/bomba')     sistemaEstado.bombaPrincipal = valor === 1;
     else if (topic === 'agua_iot/actuadores/solenoide') sistemaEstado.solenoideCalle = valor === 1;
 }
 
@@ -668,8 +768,8 @@ const API_PORT = process.env.API_PORT || 3001;
 const server = http.createServer(async (req, res) => {
     // CORS headers para Flutter Web
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.setHeader('Content-Type', 'application/json');
 
     if (req.method === 'OPTIONS') {
@@ -1014,6 +1114,119 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🔑 AUTH ENDPOINTS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // POST /api/auth/login
+    if (req.method === 'POST' && req.url === '/api/auth/login') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', async () => {
+            try {
+                if (!pool) { res.writeHead(503); res.end(JSON.stringify({ error: 'DB no disponible' })); return; }
+                const { email, password } = JSON.parse(body);
+                if (!email || !password) {
+                    res.writeHead(400); res.end(JSON.stringify({ error: 'Email y contraseña requeridos' })); return;
+                }
+                const [rows] = await pool.execute(
+                    'SELECT id, nombre, email, password_hash, rol_global FROM usuarios WHERE email = ? AND activo = TRUE',
+                    [email.trim().toLowerCase()]
+                );
+                if (rows.length === 0) { res.writeHead(401); res.end(JSON.stringify({ error: 'Credenciales inválidas' })); return; }
+                const user = rows[0];
+                const match = await bcrypt.compare(password, user.password_hash);
+                if (!match) { res.writeHead(401); res.end(JSON.stringify({ error: 'Credenciales inválidas' })); return; }
+                const token = signToken({ id: user.id, email: user.email, rol: user.rol_global });
+                console.log(`🔑 Login: ${user.email} (${user.rol_global})`);
+                res.writeHead(200);
+                res.end(JSON.stringify({ token, user: { id: user.id, nombre: user.nombre, email: user.email, rol: user.rol_global } }));
+            } catch (e) {
+                console.error('Login error:', e.message);
+                res.writeHead(500); res.end(JSON.stringify({ error: 'Error interno' }));
+            }
+        });
+        return;
+    }
+
+    // GET /api/auth/me
+    if (req.method === 'GET' && req.url === '/api/auth/me') {
+        const token = extractToken(req);
+        if (!token) { res.writeHead(401); res.end(JSON.stringify({ error: 'No autenticado' })); return; }
+        const payload = verifyToken(token);
+        if (!payload) { res.writeHead(401); res.end(JSON.stringify({ error: 'Token inválido' })); return; }
+        try {
+            if (!pool) { res.writeHead(503); res.end(JSON.stringify({ error: 'DB no disponible' })); return; }
+            const [rows] = await pool.execute(
+                'SELECT id, nombre, email, rol_global FROM usuarios WHERE id = ? AND activo = TRUE', [payload.id]
+            );
+            if (rows.length === 0) { res.writeHead(401); res.end(JSON.stringify({ error: 'Usuario no encontrado' })); return; }
+            res.writeHead(200);
+            res.end(JSON.stringify({ user: { ...rows[0], rol: rows[0].rol_global } }));
+        } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: 'Error interno' })); }
+        return;
+    }
+
+    // POST /api/auth/logout
+    if (req.method === 'POST' && req.url === '/api/auth/logout') {
+        const token = extractToken(req);
+        if (token) { const p = verifyToken(token); if (p) console.log(`🚪 Logout: ${p.email}`); }
+        res.writeHead(200); res.end(JSON.stringify({ ok: true }));
+        return;
+    }
+
+    // POST /api/usuarios  — crear usuario (solo admin)
+    if (req.method === 'POST' && req.url === '/api/usuarios') {
+        const token = extractToken(req);
+        if (!token) { res.writeHead(401); res.end(JSON.stringify({ error: 'No autenticado' })); return; }
+        const payload = verifyToken(token);
+        if (!payload || payload.rol !== 'admin') { res.writeHead(403); res.end(JSON.stringify({ error: 'Solo administradores' })); return; }
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', async () => {
+            try {
+                if (!pool) { res.writeHead(503); res.end(JSON.stringify({ error: 'DB no disponible' })); return; }
+                const { nombre, email, password, rol } = JSON.parse(body);
+                if (!nombre || !email || !password) { res.writeHead(400); res.end(JSON.stringify({ error: 'nombre, email y password requeridos' })); return; }
+                const rolFinal = ['admin','operador','viewer'].includes(rol) ? rol : 'operador';
+                const hash = await bcrypt.hash(password, 12);
+                const [result] = await pool.execute(
+                    'INSERT INTO usuarios (nombre, email, password_hash, rol_global) VALUES (?, ?, ?, ?)',
+                    [nombre, email.trim().toLowerCase(), hash, rolFinal]
+                );
+                await pool.execute(
+                    'INSERT IGNORE INTO usuario_sistema (usuario_id, sistema_id, rol) VALUES (?, 1, ?)',
+                    [result.insertId, rolFinal]
+                );
+                console.log(`👤 Nuevo usuario: ${email} (${rolFinal}) por ${payload.email}`);
+                res.writeHead(201);
+                res.end(JSON.stringify({ ok: true, user: { id: result.insertId, nombre, email: email.trim().toLowerCase(), rol: rolFinal } }));
+            } catch (e) {
+                if (e.code === 'ER_DUP_ENTRY') { res.writeHead(409); res.end(JSON.stringify({ error: 'El email ya está registrado' })); }
+                else { res.writeHead(500); res.end(JSON.stringify({ error: 'Error interno' })); }
+            }
+        });
+        return;
+    }
+
+    // GET /api/usuarios  — listar usuarios (solo admin)
+    if (req.method === 'GET' && req.url === '/api/usuarios') {
+        const token = extractToken(req);
+        if (!token) { res.writeHead(401); res.end(JSON.stringify({ error: 'No autenticado' })); return; }
+        const payload = verifyToken(token);
+        if (!payload || payload.rol !== 'admin') { res.writeHead(403); res.end(JSON.stringify({ error: 'Solo administradores' })); return; }
+        try {
+            if (!pool) { res.writeHead(503); res.end(JSON.stringify({ error: 'DB no disponible' })); return; }
+            const [rows] = await pool.execute(
+                `SELECT u.id, u.nombre, u.email, u.rol_global as rol, u.activo, u.creado_en
+                 FROM usuarios u JOIN usuario_sistema us ON us.usuario_id = u.id AND us.sistema_id = 1
+                 ORDER BY u.creado_en ASC`
+            );
+            res.writeHead(200); res.end(JSON.stringify({ usuarios: rows }));
+        } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: 'Error interno' })); }
+        return;
+    }
+
     res.writeHead(404);
     res.end(JSON.stringify({ error: 'Not found' }));
 });
@@ -1039,6 +1252,7 @@ wss.on('connection', (ws, req) => {
     // Flutter abra el WebSocket → el estado actual nunca llega a la app.
     // Solución: al conectar, reenviar todo el estado conocido inmediatamente.
     const snapshot = [
+        { topic: 'agua_iot/actuadores/bomba',             value: sistemaEstado.bombaPrincipal ? 1 : 0 },
         { topic: 'agua_iot/actuadores/bomba_calle',       value: sistemaEstado.bombaCalle     ? 1 : 0 },
         { topic: 'agua_iot/actuadores/solenoide_calle',   value: sistemaEstado.solenoideCalle ? 1 : 0 },
         { topic: 'agua_iot/actuadores/bomba_lluvia',      value: sistemaEstado.bombaLluvia    ? 1 : 0 },
@@ -1072,6 +1286,24 @@ wss.on('connection', (ws, req) => {
                 };
                 const topic = topicMap[msg.command];
                 if (topic) {
+                    // ── REGLA: Las fuentes no pueden activarse sin la Bomba Principal ──────
+                    const esFuente = ['bomba_calle', 'solenoide_calle', 'bomba_lluvia', 'solenoide_lluvia'].includes(msg.command);
+                    const intentandoEncender = String(msg.value) === '1';
+
+                    if (esFuente && intentandoEncender && !sistemaEstado.bombaPrincipal) {
+                        console.warn(`🔒 INTERLOCK: Intento de encender ${msg.command} sin Bomba Principal activa — BLOQUEADO`);
+                        // Notificar a Flutter del bloqueo
+                        if (ws.readyState === 1) {
+                            ws.send(JSON.stringify({
+                                type: 'interlock_block',
+                                reason: 'bomba_principal_off',
+                                command: msg.command,
+                                message: 'La Bomba Principal debe estar encendida antes de activar una fuente'
+                            }));
+                        }
+                        return; // No publicar el comando
+                    }
+
                     console.log(`🔧 Comando desde Flutter Web: ${topic} = ${msg.value}`);
                     client.publish(topic, String(msg.value), { qos: 1, retain: true });
                 } else {

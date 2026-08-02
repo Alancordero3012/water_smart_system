@@ -6,6 +6,7 @@ import '../../data/services/preferences_service.dart';
 import '../../data/services/weather_service.dart';
 import '../../domain/providers.dart';
 import '../../domain/auth_provider.dart';
+import '../auth/create_user_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -132,6 +133,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           // ══════════════════════════════════════════════════════════
           _sectionLabel('SISTEMA'),
           const SizedBox(height: 8),
+
+          // ── Gestión de usuarios (solo admin) ─────────────────────────────────────
+          if (ref.watch(authProvider).user?.isAdmin == true) ...[
+            _card(
+              child: ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00E5FF).withAlpha(15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.group_add_rounded,
+                      color: Color(0xFF00E5FF), size: 20),
+                ),
+                title: const Text('Gestión de usuarios',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                subtitle: Text(
+                  'Crear cuentas de operador u observador',
+                  style: TextStyle(color: Colors.white.withAlpha(100), fontSize: 11),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                    color: Colors.white30, size: 14),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CreateUserScreen()),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+
           _card(
             border: isSimulation
                 ? Colors.orange.withAlpha(60)

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/providers.dart';
+import '../../domain/auth_provider.dart';
 import '../../domain/event_log_provider.dart';
 import '../../domain/models/app_event.dart';
 import '../alerts/alert_wrapper.dart';
@@ -28,9 +29,10 @@ class AppShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedIndex = ref.watch(_navIndexProvider);
-    final isExpanded = ref.watch(_sidebarExpandedProvider);
-    final isSimulation = ref.watch(useSimulationProvider);
-    final events = ref.watch(eventLogProvider);
+    final isExpanded    = ref.watch(_sidebarExpandedProvider);
+    final isSimulation  = ref.watch(useSimulationProvider);
+    final events        = ref.watch(eventLogProvider);
+    final authState     = ref.watch(authProvider);
     final criticalCount = events
         .where((e) => e.severity == EventSeverity.critical)
         .length;
@@ -212,7 +214,7 @@ class AppShell extends ConsumerWidget {
 
                   if (isExpanded)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.only(bottom: 4),
                       child: Text(
                         'v1.0 · ITT',
                         style: TextStyle(
@@ -221,6 +223,29 @@ class AppShell extends ConsumerWidget {
                     )
                   else
                     const SizedBox(height: 4),
+
+                  // ── Logout button ─────────────────────────────────────────────
+                  if (isExpanded && authState.user != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+                      child: Text(
+                        authState.user!.nombre,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withAlpha(50),
+                          fontSize: 9,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _LogoutButton(
+                      expanded: isExpanded,
+                      onLogout: () => _confirmLogout(context, ref),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -241,6 +266,89 @@ class AppShell extends ConsumerWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  static void _confirmLogout(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF13131A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Cerrar sesión',
+          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          '¿Deseas cerrar sesión? Tendrás que ingresar tus credenciales nuevamente.',
+          style: TextStyle(color: Colors.white.withAlpha(160), fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancelar', style: TextStyle(color: Colors.white.withAlpha(120))),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              ref.read(authProvider.notifier).logout();
+            },
+            child: const Text('Cerrar sesión',
+                style: TextStyle(color: Color(0xFFFF5252), fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Logout Button ─────────────────────────────────────────────────────────────
+
+class _LogoutButton extends StatelessWidget {
+  final bool expanded;
+  final VoidCallback onLogout;
+
+  const _LogoutButton({required this.expanded, required this.onLogout});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Cerrar sesión',
+      child: InkWell(
+        onTap: onLogout,
+        borderRadius: BorderRadius.circular(8),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          padding: EdgeInsets.symmetric(
+            horizontal: expanded ? 10 : 0,
+            vertical: 9,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            color: Colors.red.withAlpha(0),
+          ),
+          child: Row(
+            mainAxisAlignment:
+                expanded ? MainAxisAlignment.start : MainAxisAlignment.center,
+            children: [
+              Icon(Icons.logout_rounded,
+                  color: Colors.red.withAlpha(150), size: 20),
+              if (expanded) ...[
+                const SizedBox(width: 10),
+                Text(
+                  'Cerrar sesión',
+                  style: TextStyle(
+                    color: Colors.red.withAlpha(180),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );

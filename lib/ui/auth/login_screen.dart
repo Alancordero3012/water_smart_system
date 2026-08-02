@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/auth_provider.dart';
+import '../../domain/providers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -12,8 +13,8 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen>
     with TickerProviderStateMixin {
-  final _userCtrl = TextEditingController();
-  final _passCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _passCtrl  = TextEditingController();
   final _formKey  = GlobalKey<FormState>();
 
   bool _obscurePass = true;
@@ -56,7 +57,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     _shakeCtrl.dispose();
     _fadeCtrl.dispose();
     _pulseCtrl.dispose();
-    _userCtrl.dispose();
+    _emailCtrl.dispose();
     _passCtrl.dispose();
     super.dispose();
   }
@@ -65,16 +66,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     if (_isLoading) return;
     setState(() { _hasError = false; _isLoading = true; });
 
-    await Future.delayed(const Duration(milliseconds: 600)); // simulate auth
+    final ok = await ref.read(authProvider.notifier)
+        .login(_emailCtrl.text, _passCtrl.text);
 
-    final ok = ref.read(authProvider.notifier)
-        .login(_userCtrl.text, _passCtrl.text);
+    if (!mounted) return;
 
-    if (!ok) {
-      setState(() { _isLoading = false; _hasError = true; });
+    if (ok) {
+      // Simulación SIEMPRE apagada al iniciar sesión
+      ref.read(useSimulationProvider.notifier).state = false;
+    } else {
+      final errMsg = ref.read(authProvider).error;
+      setState(() {
+        _isLoading = false;
+        _hasError  = true;
+        _errorMsg  = errMsg ?? 'Credenciales inválidas';
+      });
       _shakeCtrl.forward(from: 0);
     }
   }
+
+  String _errorMsg = 'Credenciales inválidas';
 
   @override
   Widget build(BuildContext context) {
@@ -145,11 +156,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             ),
                             const SizedBox(height: 36),
 
-                            // ── Usuario ───────────────────────────────────
+                            // ── Email ───────────────────────────────────────────
                             _GlowField(
-                              controller: _userCtrl,
-                              label: 'Usuario',
-                              icon: Icons.person_outline_rounded,
+                              controller: _emailCtrl,
+                              label: 'Email',
+                              icon: Icons.alternate_email_rounded,
+                              keyboardType: TextInputType.emailAddress,
                               hasError: _hasError,
                               onSubmitted: (_) => _submit(),
                             ),
@@ -189,12 +201,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                           const Icon(Icons.error_outline,
                                               color: Colors.redAccent, size: 14),
                                           const SizedBox(width: 6),
-                                          Text(
-                                            'Credenciales incorrectas',
-                                            style: TextStyle(
-                                              color: Colors.redAccent
-                                                  .withAlpha(200),
-                                              fontSize: 12,
+                                          Flexible(
+                                            child: Text(
+                                              _errorMsg,
+                                              style: TextStyle(
+                                                color: Colors.redAccent
+                                                    .withAlpha(200),
+                                                fontSize: 12,
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -286,6 +300,7 @@ class _GlowField extends StatefulWidget {
   final bool hasError;
   final Widget? suffix;
   final void Function(String)? onSubmitted;
+  final TextInputType? keyboardType;
 
   const _GlowField({
     required this.controller,
@@ -295,6 +310,7 @@ class _GlowField extends StatefulWidget {
     this.hasError = false,
     this.suffix,
     this.onSubmitted,
+    this.keyboardType,
   });
 
   @override
@@ -323,6 +339,7 @@ class _GlowFieldState extends State<_GlowField> {
         child: TextFormField(
           controller: widget.controller,
           obscureText: widget.obscure,
+          keyboardType: widget.keyboardType,
           onFieldSubmitted: widget.onSubmitted,
           style: const TextStyle(color: Colors.white, fontSize: 14),
           decoration: InputDecoration(

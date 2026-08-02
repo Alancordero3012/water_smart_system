@@ -19,6 +19,8 @@ class LocalBridgeRepository implements WaterDataRepository {
 
   final StreamController<WaterSystemState> _stateController =
       StreamController.broadcast();
+  final StreamController<String> _interlockController =
+      StreamController.broadcast();
   WaterSystemState _currentState = const WaterSystemState();
   bool _isInitialized = false;
 
@@ -100,6 +102,14 @@ class LocalBridgeRepository implements WaterDataRepository {
       return;
     }
 
+    // Interlock block — bomba principal apagada
+    if (data['type'] == 'interlock_block') {
+      final msg = data['message'] as String? ?? 'Enciende la Bomba Principal primero';
+      debugPrint('🔒 INTERLOCK: $msg');
+      _interlockController.add(msg);
+      return;
+    }
+
     final String? topic = data['topic'] as String?;
     final double? value = (data['value'] as num?)?.toDouble();
     if (topic == null || value == null) return;
@@ -143,8 +153,12 @@ class LocalBridgeRepository implements WaterDataRepository {
     _sub?.cancel();
     _channel?.sink.close();
     _stateController.close();
+    _interlockController.close();
     _isInitialized = false;
   }
+
+  /// Stream que emite mensajes de bloqueo por interlock (bomba principal apagada).
+  Stream<String> get interlockStream => _interlockController.stream;
 }
 
 final localBridgeRepositoryProvider = Provider<WaterDataRepository>((ref) {

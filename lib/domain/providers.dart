@@ -139,3 +139,11 @@ final sparklineHistoryProvider = StateProvider<SparklineHistory>((ref) {
 
   return history;
 });
+
+/// Emits a message whenever the backend blocks a fuente command because
+/// the Bomba Principal is OFF.  UI listens with ref.listen to show a snackbar.
+final interlockStreamProvider = StreamProvider<String>((ref) {
+  final repo = ref.watch(localBridgeRepositoryProvider);
+  if (repo is LocalBridgeRepository) return repo.interlockStream;
+  return const Stream.empty();
+});

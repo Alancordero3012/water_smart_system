@@ -8,16 +8,6 @@ import 'ui/theme/app_theme.dart';
 import 'ui/auth/login_screen.dart';
 import 'domain/auth_provider.dart';
 
-/// Entry point — lightweight, no process spawning.
-///
-/// The backend (index.js + simulador.js) must be started manually before
-/// launching the app:
-///   cd backend_iot
-///   node index.js        # Terminal 1
-///   node simulador.js    # Terminal 2
-///
-/// The app connects to HiveMQ Cloud immediately on startup and waits for
-/// MQTT data. The Bridge Health banner in the dashboard shows connection status.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
@@ -46,19 +36,68 @@ class WaterSmartApp extends StatelessWidget {
   }
 }
 
-// ── Auth Gate — shows login or app depending on auth state ────────────────────
+// ── Auth Gate ─────────────────────────────────────────────────────────────────
+// Muestra splash mientras verifica la sesión guardada,
+// luego decide entre LoginScreen y AppShell.
 
 class _AuthGate extends ConsumerWidget {
   const _AuthGate();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isAuthenticated = ref.watch(authProvider);
+    final auth = ref.watch(authProvider);
+
+    // Verificando sesión guardada
+    if (auth.isLoading) {
+      return const _SplashScreen();
+    }
+
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 500),
-      child: isAuthenticated
+      child: auth.isAuthenticated
           ? const AppShell(key: ValueKey('shell'))
           : const LoginScreen(key: ValueKey('login')),
+    );
+  }
+}
+
+// ── Splash Screen ─────────────────────────────────────────────────────────────
+
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Color(0xFF090E1A),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.water_drop_rounded,
+                color: Color(0xFF00E5FF), size: 48),
+            SizedBox(height: 20),
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Color(0xFF00E5FF),
+              ),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'WATER SMART SYSTEM',
+              style: TextStyle(
+                color: Color(0xFF00E5FF),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 3,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
