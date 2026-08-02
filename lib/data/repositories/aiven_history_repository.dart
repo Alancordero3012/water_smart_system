@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -68,7 +68,7 @@ class ConsumoDelDia {
 
 class AivenHistoryRepository implements HistoryRepository {
   final String baseUrl;
-  AivenHistoryRepository({this.baseUrl = 'http://localhost:3001'});
+  AivenHistoryRepository({this.baseUrl = 'https://watersmart-backend.onrender.com'});
 
   @override
   Future<List<SensorReading>> getRecentReadings() async {

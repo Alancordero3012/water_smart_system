@@ -6,7 +6,9 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../domain/models/water_system_state.dart';
 import '../../domain/repositories/water_data_repository.dart';
 
-/// Connects to the local Node.js bridge WebSocket server at ws://localhost:3001.
+import '../../domain/auth_provider.dart' show kBackendWsUrl;
+
+/// Connects to the Node.js bridge WebSocket server (production: Render).
 ///
 /// The bridge (index.js) forwards every MQTT message it receives from HiveMQ
 /// as a JSON object: `{ "topic": "agua_iot/...", "value": 12.34 }`.
@@ -24,7 +26,7 @@ class LocalBridgeRepository implements WaterDataRepository {
   WaterSystemState _currentState = const WaterSystemState();
   bool _isInitialized = false;
 
-  static const String _wsUrl = 'ws://localhost:3001';
+  static const String _wsUrl = kBackendWsUrl;
 
   @override
   Stream<WaterSystemState> get stateStream => _stateController.stream;

@@ -7,11 +7,10 @@ import '../data/services/preferences_service.dart';
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
-/// URL base del backend. En web usa la IP pública cuando se deploya.
-/// Ajustar a la URL de Railway cuando se suba.
-const String kBackendUrl = kIsWeb
-    ? 'http://localhost:3001'
-    : 'http://localhost:3001';
+/// URL base del backend.
+/// HTTP para llamadas REST, WSS para WebSocket.
+const String kBackendUrl    = 'https://watersmart-backend.onrender.com';
+const String kBackendWsUrl  = 'wss://watersmart-backend.onrender.com';
 
 const String _kJwtKey     = 'auth_jwt_token';
 const String _kUserKey    = 'auth_user_json';

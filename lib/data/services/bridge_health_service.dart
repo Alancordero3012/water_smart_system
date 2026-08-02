@@ -51,7 +51,7 @@ class BridgeHealth {
 // ── StateNotifier ─────────────────────────────────────────────────────────────
 
 class BridgeHealthNotifier extends StateNotifier<BridgeHealth> {
-  static const String _healthUrl = 'http://localhost:3001/api/health';
+  static const String _healthUrl = 'https://watersmart-backend.onrender.com/api/health';
   static const Duration _pollInterval = Duration(seconds: 10);
 
   /// Short delay before first poll. Processes are started manually so they
@@ -128,7 +128,7 @@ class BridgeHealthNotifier extends StateNotifier<BridgeHealth> {
       final body = active ? '{"active": true}' : '{"active": false}';
       await http
           .post(
-            Uri.parse('http://localhost:3001/api/test-mode'),
+            Uri.parse('https://watersmart-backend.onrender.com/api/test-mode'),
             headers: {'Content-Type': 'application/json'},
             body: body,
           )

@@ -21,7 +21,7 @@ class _EventLogPanelState extends ConsumerState<EventLogPanel> {
     setState(() => _sendingTest = true);
     try {
       // Siempre apuntar al backend Node.js en el puerto 3001
-      final uri = Uri.parse('http://localhost:3001/api/test-email');
+      final uri = Uri.parse('https://watersmart-backend.onrender.com/api/test-email');
       final resp = await http.post(uri,
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({}));
