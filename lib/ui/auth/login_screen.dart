@@ -136,7 +136,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             _Logo(hasError: _hasError),
                             const SizedBox(height: 12),
                             const Text(
-                              'WATER SMART SYSTEM',
+                              'SIGA',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w900,

@@ -274,7 +274,7 @@ class _HeaderCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  'El usuario tendrá acceso al Sistema #1 (WaterSmart Venezuela)',
+                  'El usuario tendrá acceso al Sistema #1 (SIGA)',
                   style: TextStyle(
                     color: Colors.white.withAlpha(80),
                     fontSize: 11,

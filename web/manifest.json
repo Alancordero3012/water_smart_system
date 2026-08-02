@@ -1,11 +1,11 @@
 {
-    "name": "water_smart_system",
-    "short_name": "water_smart_system",
+    "name": "SIGA",
+    "short_name": "SIGA",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Sistema Inteligente de Gestión de Agua",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

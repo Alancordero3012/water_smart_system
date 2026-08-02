@@ -25,7 +25,7 @@ class WaterSmartApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Water Smart System',
+      title: 'SIGA',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       darkTheme: AppTheme.darkTheme,
@@ -87,7 +87,7 @@ class _SplashScreen extends StatelessWidget {
             ),
             SizedBox(height: 16),
             Text(
-              'WATER SMART SYSTEM',
+              'SIGA',
               style: TextStyle(
                 color: Color(0xFF00E5FF),
                 fontSize: 12,
