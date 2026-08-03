@@ -17,11 +17,14 @@ const JWT_EXPIRES = '30d';
 // Configura EMAIL_APP_PASS en .env con tu Google App Password
 // ═══════════════════════════════════════════════════════════════════════════════
 const emailTransporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,  // STARTTLS (compatible con Render free tier)
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_APP_PASS,
     },
+    tls: { rejectUnauthorized: false },
 });
 
 // Cooldown por tipo: no spamear el mismo tipo de alerta más de 1 vez cada 5 min
