@@ -10,6 +10,7 @@ import '../dashboard/dashboard_screen.dart';
 import '../history/history_screen.dart';
 import '../settings/settings_screen.dart';
 import 'control_screen.dart';
+import '../components/components_screen.dart';
 
 // Tracks selected destination index
 final _navIndexProvider = StateProvider<int>((ref) => 0);
@@ -23,6 +24,7 @@ class AppShell extends ConsumerWidget {
     _NavDest(Icons.sensors, Icons.sensors_outlined, 'Dashboard'),
     _NavDest(Icons.tune, Icons.tune_outlined, 'Control'),
     _NavDest(Icons.show_chart, Icons.show_chart_outlined, 'Historial'),
+    _NavDest(Icons.device_hub_rounded, Icons.device_hub_outlined, 'Sistema'),
     _NavDest(Icons.settings, Icons.settings_outlined, 'Config'),
   ];
 
@@ -261,6 +263,7 @@ class AppShell extends ConsumerWidget {
                   DashboardBody(),
                   ControlScreen(),
                   HistoryScreen(),
+                  ComponentsScreen(),
                   SettingsScreen(),
                 ],
               ),
