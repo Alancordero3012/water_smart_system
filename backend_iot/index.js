@@ -1,4 +1,4 @@
-require('dotenv').config();
+﻿require('dotenv').config();
 const mqtt = require('mqtt');
 const mysql = require('mysql2/promise');
 const http = require('http');
@@ -1082,32 +1082,44 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // ── POST /api/test-email — enviar email de prueba ────────────────────────────────────
+    // ── POST /api/test-email — enviar email de prueba ──────────────────────────
     if (req.method === 'POST' && req.url === '/api/test-email') {
         let body = '';
         req.on('data', chunk => body += chunk);
         req.on('end', async () => {
-            try {
-                // Forzar email ignorando cooldown (es una prueba)
-                const saved = { ...emailCooldowns };
-                Object.keys(emailCooldowns).forEach(k => delete emailCooldowns[k]);
-
-                await enviarAlertaEmail('test',
-                    '🧪 WaterSmart — Email de Prueba',
-                    `<h3 style="color:#00e5ff">🧪 Email de Prueba</h3>
-                     <p>Este es un correo de prueba enviado desde el panel de Water Smart System.</p>
-                     <p>Si recibes este mensaje, el sistema de alertas por email está funcionando correctamente.</p>
-                     <p style="color:#8b949e">Configuración activa: <b>${process.env.EMAIL_TO}</b></p>`
-                );
-
-                // Restaurar cooldowns (para no bloquear alertas reales)
-                Object.assign(emailCooldowns, saved);
-                delete emailCooldowns['test'];
-
+            // Verificar credenciales antes de intentar
+            if (!process.env.EMAIL_APP_PASS ||
+                process.env.EMAIL_APP_PASS === 'REEMPLAZA_CON_TU_APP_PASSWORD' ||
+                !process.env.EMAIL_USER || !process.env.EMAIL_TO) {
                 res.writeHead(200);
-                res.end(JSON.stringify({ ok: true, message: 'Email de prueba enviado' }));
+                return res.end(JSON.stringify({
+                    ok: false,
+                    error: 'EMAIL_APP_PASS, EMAIL_USER o EMAIL_TO no configurados. Revisa las variables de entorno en Render.'
+                }));
+            }
+            try {
+                // Envio directo al transporter (sin cooldown)
+                await emailTransporter.sendMail({
+                    from: `"SIGA Alerts" <${process.env.EMAIL_USER}>`,
+                    to: process.env.EMAIL_TO,
+                    subject: '🧪 SIGA — Email de Prueba',
+                    html: `<div style="font-family:sans-serif;background:#0d1117;color:#e6edf3;padding:32px;border-radius:12px">
+                      <div style="border-left:4px solid #00e5ff;padding-left:16px;margin-bottom:24px">
+                        <h2 style="color:#00e5ff;margin:0">SIGA</h2>
+                        <p style="color:#8b949e;margin:4px 0">Sistema Inteligente de Gestion de Agua</p>
+                      </div>
+                      <h3 style="color:#00e5ff">Correo de Prueba</h3>
+                      <p>Las alertas por email estan funcionando correctamente.</p>
+                      <p style="color:#8b949e">Destino: <b>${process.env.EMAIL_TO}</b></p>
+                      <p style="color:#8b949e;font-size:12px">Enviado el ${new Date().toLocaleString('es-VE',{timeZone:'America/Caracas'})} (VET)</p>
+                    </div>`,
+                });
+                console.log(`[Email] Prueba enviada a ${process.env.EMAIL_TO}`);
+                res.writeHead(200);
+                res.end(JSON.stringify({ ok: true, message: process.env.EMAIL_TO }));
             } catch (e) {
-                res.writeHead(500);
+                console.error(`[Email] Error test-email: ${e.message}`);
+                res.writeHead(200);
                 res.end(JSON.stringify({ ok: false, error: e.message }));
             }
         });

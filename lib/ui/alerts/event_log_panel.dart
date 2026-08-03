@@ -20,11 +20,12 @@ class _EventLogPanelState extends ConsumerState<EventLogPanel> {
     if (_sendingTest) return;
     setState(() => _sendingTest = true);
     try {
-      // Siempre apuntar al backend Node.js en el puerto 3001
       final uri = Uri.parse('https://watersmart-backend.onrender.com/api/test-email');
-      final resp = await http.post(uri,
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({}));
+      final resp = await http
+          .post(uri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({}))
+          .timeout(const Duration(seconds: 20));
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -36,7 +37,7 @@ class _EventLogPanelState extends ConsumerState<EventLogPanel> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(data['ok'] == true
-                  ? '✅ Email de prueba enviado a ${data['message'] ?? ''}.'
+                  ? '✅ Email de prueba enviado a ${data['message'] ?? ''}'
                   : '❌ Error: ${data['error'] ?? 'desconocido'}'),
             ),
           ],
@@ -44,16 +45,36 @@ class _EventLogPanelState extends ConsumerState<EventLogPanel> {
         backgroundColor: const Color(0xFF1E1E2E),
         duration: const Duration(seconds: 4),
       ));
-    } catch (e) {
+    } on Exception catch (e) {
       if (!context.mounted) return;
+      final isTimeout = e.toString().contains('TimeoutException') ||
+          e.toString().contains('timeout');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('❌ No se pudo conectar al backend: $e'),
-        backgroundColor: Colors.redAccent.withAlpha(200),
+        content: Row(
+          children: [
+            Icon(
+              isTimeout ? Icons.hourglass_empty_rounded : Icons.wifi_off_rounded,
+              color: Colors.orange,
+              size: 16,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                isTimeout
+                    ? '⏱ El backend tardó demasiado (puede estar despertando). Espera 30s e intenta de nuevo.'
+                    : '❌ Sin conexión al backend: ${e.toString().substring(0, 60)}',
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF1E1E2E),
+        duration: const Duration(seconds: 6),
       ));
     } finally {
       if (mounted) setState(() => _sendingTest = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
