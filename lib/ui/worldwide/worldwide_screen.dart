@@ -246,6 +246,40 @@ final kWorldSystems = <WorldSystem>[
       SigaComp(name: 'Caudal Total',      type: SigaCompType.flowSensor,     value: 24.1, unit: 'L/min'),
     ],
   ),
+  WorldSystem(
+    id: 'dom_001',
+    name: 'SIGA Residencial',
+    city: 'Santo Domingo',
+    country: 'Rep. Dominicana',
+    flag: '🇩🇴',
+    lat: 18.5, lng: -69.9,
+    online: true,
+    accent: const Color(0xFF40C4FF),
+    description: 'Sistema residencial en zona norte con 2 tanques y control de bomba principal.',
+    components: const [
+      SigaComp(name: 'Tanque Principal', type: SigaCompType.tank,  value: 63),
+      SigaComp(name: 'Tanque Reserva',  type: SigaCompType.tank,  value: 29),
+      SigaComp(name: 'Bomba Principal', type: SigaCompType.pump,  value: 1),
+      SigaComp(name: 'Solenoide',       type: SigaCompType.solenoid, value: 1),
+      SigaComp(name: 'Presión Red',     type: SigaCompType.pressureSensor, value: 44.8, unit: 'PSI'),
+    ],
+  ),
+  WorldSystem(
+    id: 'dom_002',
+    name: 'SIGA Comercial',
+    city: 'Santiago de los Cab.',
+    country: 'Rep. Dominicana',
+    flag: '🇩🇴',
+    lat: 19.5, lng: -70.7,
+    online: false,
+    accent: const Color(0xFF80D8FF),
+    description: 'Local comercial con 1 tanque elevado y bomba de distribución.',
+    components: const [
+      SigaComp(name: 'Tanque Elevado',  type: SigaCompType.tank,  value: 41),
+      SigaComp(name: 'Bomba Comercial', type: SigaCompType.pump,  value: 0),
+      SigaComp(name: 'Solenoide',       type: SigaCompType.solenoid, value: 0),
+    ],
+  ),
 ];
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -502,10 +536,10 @@ class _WorldwideScreenState extends State<WorldwideScreen>
               return GridView.builder(
                 padding: const EdgeInsets.all(16),
                 gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 360,
-                  mainAxisSpacing: 14,
-                  crossAxisSpacing: 14,
-                  childAspectRatio: 0.82,
+                  maxCrossAxisExtent: 340,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 1.08,
                 ),
                 itemCount: systems.length,
                 itemBuilder: (context, i) {
@@ -812,7 +846,7 @@ class _SystemCardState extends State<_SystemCard>
               const SizedBox(height: 12),
 
               // ── Tank level bars ───────────────────────────────────────────
-              ...tanks.take(3).map((tank) => Padding(
+              ...tanks.take(2).map((tank) => Padding(
                     padding: const EdgeInsets.only(bottom: 7),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -861,11 +895,11 @@ class _SystemCardState extends State<_SystemCard>
                     ),
                   )),
 
-              if (tanks.length > 3)
+              if (tanks.length > 2)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 7),
+                  padding: const EdgeInsets.only(bottom: 4),
                   child: Text(
-                    '+${tanks.length - 3} tanque${tanks.length - 3 > 1 ? 's' : ''} más',
+                    '+${tanks.length - 2} tanque${tanks.length - 2 > 1 ? 's' : ''} más',
                     style: TextStyle(
                       color: s.accent.withAlpha(160),
                       fontSize: 10,
