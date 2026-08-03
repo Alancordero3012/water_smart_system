@@ -5,7 +5,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
-const nodemailer = require('nodemailer');
+// nodemailer removed — using Resend HTTP API (SMTP blocked on Render)
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
 
@@ -16,24 +16,53 @@ const JWT_EXPIRES = '30d';
 // ✉ EMAIL ALERTS (Nodemailer + Gmail SMTP)
 // Configura EMAIL_APP_PASS en .env con tu Google App Password
 // ═══════════════════════════════════════════════════════════════════════════════
-const emailTransporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,  // STARTTLS (compatible con Render free tier)
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_APP_PASS,
-    },
-    tls: { rejectUnauthorized: false },
-});
+// Resend HTTP API — no usa SMTP, funciona en cualquier hosting (puerto 443 HTTPS)
+function sendViaResend(to, subject, html) {
+    return new Promise((resolve, reject) => {
+        const apiKey = process.env.RESEND_API_KEY;
+        if (!apiKey) { reject(new Error('RESEND_API_KEY no configurada en variables de entorno')); return; }
+
+        const payload = JSON.stringify({
+            from: 'SIGA Alerts <onboarding@resend.dev>',
+            to: [to],
+            subject,
+            html,
+        });
+
+        const req = require('https').request({
+            hostname: 'api.resend.com',
+            port: 443,
+            path: '/emails',
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + apiKey,
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload),
+            },
+        }, (res) => {
+            let data = '';
+            res.on('data', c => data += c);
+            res.on('end', () => {
+                if (res.statusCode === 200 || res.statusCode === 201) {
+                    resolve(JSON.parse(data));
+                } else {
+                    reject(new Error('Resend error ' + res.statusCode + ': ' + data));
+                }
+            });
+        });
+        req.on('error', reject);
+        req.write(payload);
+        req.end();
+    });
+}
 
 // Cooldown por tipo: no spamear el mismo tipo de alerta más de 1 vez cada 5 min
 const emailCooldowns = {};
 const EMAIL_COOLDOWN_MS = 5 * 60 * 1000;
 
 async function enviarAlertaEmail(tipo, asunto, cuerpoHtml) {
-    if (!process.env.EMAIL_APP_PASS || process.env.EMAIL_APP_PASS === 'REEMPLAZA_CON_TU_APP_PASSWORD') {
-        console.log(`ℹ️ [Email] App Password no configurada — omitiendo alerta: ${tipo}`);
+    if (!process.env.RESEND_API_KEY) {
+        console.log('[Email] RESEND_API_KEY no configurada — omitiendo alerta: ' + tipo);
         return;
     }
     const ahora = Date.now();
@@ -43,23 +72,18 @@ async function enviarAlertaEmail(tipo, asunto, cuerpoHtml) {
     }
     emailCooldowns[tipo] = ahora;
     try {
-        await emailTransporter.sendMail({
-            from: `"WaterSmart Alerts" <${process.env.EMAIL_USER}>`,
-            to: process.env.EMAIL_TO,
-            subject: asunto,
-            html: `
-                <div style="font-family:sans-serif;background:#0d1117;color:#e6edf3;padding:32px;border-radius:12px">
-                  <div style="border-left:4px solid #00e5ff;padding-left:16px;margin-bottom:24px">
-                    <h2 style="color:#00e5ff;margin:0;letter-spacing:2px">WATER SMART SYSTEM</h2>
-                    <p style="color:#8b949e;margin:4px 0">Alerta Automática del Sistema</p>
-                  </div>
-                  ${cuerpoHtml}
-                  <hr style="border-color:#21262d;margin:24px 0">
-                  <p style="color:#8b949e;font-size:12px">
-                    ⏰ ${new Date().toLocaleString('es-VE', { timeZone: 'America/Caracas' })} (VET)
-                  </p>
-                </div>`,
-        });
+        const emailDest = process.env.EMAIL_TO || process.env.EMAIL_USER;
+        await sendViaResend(emailDest, asunto,
+            '<div style="font-family:sans-serif;background:#0d1117;color:#e6edf3;padding:32px;border-radius:12px">' +
+            '<div style="border-left:4px solid #00e5ff;padding-left:16px;margin-bottom:24px">' +
+            '<h2 style="color:#00e5ff;margin:0;letter-spacing:2px">SIGA</h2>' +
+            '<p style="color:#8b949e;margin:4px 0">Sistema Inteligente de Gestión de Agua</p>' +
+            '</div>' +
+            cuerpoHtml +
+            '<hr style="border-color:#21262d;margin:24px 0">' +
+            '<p style="color:#8b949e;font-size:12px">Enviado: ' + new Date().toLocaleString('es-VE', { timeZone: 'America/Caracas' }) + ' (VET)</p>' +
+            '</div>'
+        );
         console.log(`✉ [Email] Alerta enviada: ${asunto}`);
     } catch (err) {
         console.error(`❌ [Email] Error enviando alerta: ${err.message}`);
@@ -1090,38 +1114,38 @@ const server = http.createServer(async (req, res) => {
         let body = '';
         req.on('data', chunk => body += chunk);
         req.on('end', async () => {
-            // Verificar credenciales antes de intentar
-            if (!process.env.EMAIL_APP_PASS ||
-                process.env.EMAIL_APP_PASS === 'REEMPLAZA_CON_TU_APP_PASSWORD' ||
-                !process.env.EMAIL_USER || !process.env.EMAIL_TO) {
+            // Verificar que RESEND_API_KEY esté configurada
+            if (!process.env.RESEND_API_KEY) {
                 res.writeHead(200);
                 return res.end(JSON.stringify({
                     ok: false,
-                    error: 'EMAIL_APP_PASS, EMAIL_USER o EMAIL_TO no configurados. Revisa las variables de entorno en Render.'
+                    error: 'RESEND_API_KEY no configurada en Render. Crea una cuenta en resend.com y añade la variable de entorno.'
                 }));
             }
-            try {
-                // Envio directo al transporter (sin cooldown)
-                await emailTransporter.sendMail({
-                    from: `"SIGA Alerts" <${process.env.EMAIL_USER}>`,
-                    to: process.env.EMAIL_TO,
-                    subject: '🧪 SIGA — Email de Prueba',
-                    html: `<div style="font-family:sans-serif;background:#0d1117;color:#e6edf3;padding:32px;border-radius:12px">
-                      <div style="border-left:4px solid #00e5ff;padding-left:16px;margin-bottom:24px">
-                        <h2 style="color:#00e5ff;margin:0">SIGA</h2>
-                        <p style="color:#8b949e;margin:4px 0">Sistema Inteligente de Gestion de Agua</p>
-                      </div>
-                      <h3 style="color:#00e5ff">Correo de Prueba</h3>
-                      <p>Las alertas por email estan funcionando correctamente.</p>
-                      <p style="color:#8b949e">Destino: <b>${process.env.EMAIL_TO}</b></p>
-                      <p style="color:#8b949e;font-size:12px">Enviado el ${new Date().toLocaleString('es-VE',{timeZone:'America/Caracas'})} (VET)</p>
-                    </div>`,
-                });
-                console.log(`[Email] Prueba enviada a ${process.env.EMAIL_TO}`);
+            const emailDest = process.env.EMAIL_TO || process.env.EMAIL_USER;
+            if (!emailDest) {
                 res.writeHead(200);
-                res.end(JSON.stringify({ ok: true, message: process.env.EMAIL_TO }));
+                return res.end(JSON.stringify({ ok: false, error: 'EMAIL_TO no configurado en Render.' }));
+            }
+            try {
+                await sendViaResend(
+                    emailDest,
+                    '🧪 SIGA — Email de Prueba',
+                    '<div style="font-family:sans-serif;background:#0d1117;color:#e6edf3;padding:32px;border-radius:12px">' +
+                    '<div style="border-left:4px solid #00e5ff;padding-left:16px;margin-bottom:24px">' +
+                    '<h2 style="color:#00e5ff;margin:0">SIGA</h2>' +
+                    '<p style="color:#8b949e;margin:4px 0">Sistema Inteligente de Gestión de Agua</p>' +
+                    '</div>' +
+                    '<h3 style="color:#00e5ff">✅ Correo de Prueba</h3>' +
+                    '<p>Las alertas por email están funcionando correctamente.</p>' +
+                    '<p style="color:#8b949e">Destino: <b>' + emailDest + '</b></p>' +
+                    '</div>'
+                );
+                console.log('[Email] Prueba enviada a ' + emailDest);
+                res.writeHead(200);
+                res.end(JSON.stringify({ ok: true, message: emailDest }));
             } catch (e) {
-                console.error(`[Email] Error test-email: ${e.message}`);
+                console.error('[Email] Error test-email: ' + e.message);
                 res.writeHead(200);
                 res.end(JSON.stringify({ ok: false, error: e.message }));
             }
