@@ -5,6 +5,7 @@ import 'repositories/water_data_repository.dart';
 import '../data/services/preferences_service.dart';
 import 'providers.dart';
 
+
 // ── Estado del botón de bomba ─────────────────────────────────────────────────
 
 /// Estado del gran botón industrial de la Bomba.
@@ -50,13 +51,12 @@ class BombaButtonState {
 
 class BombaNotifier extends StateNotifier<BombaButtonState> {
   final WaterDataRepository _repo;
-  final PreferencesService  _prefs;
   Timer? _timeout;
 
   /// Segundos máximos esperando el eco MQTT antes de cancelar el pending.
   static const _timeoutSec = 8;
 
-  BombaNotifier(this._repo, this._prefs) : super(const BombaButtonState());
+  BombaNotifier(this._repo) : super(const BombaButtonState());
 
   // ── Sincronización desde el stream MQTT ──────────────────────────────────
 
@@ -83,8 +83,8 @@ class BombaNotifier extends StateNotifier<BombaButtonState> {
   // ── Acción del usuario ────────────────────────────────────────────────────
 
   /// Togglea la bomba: publica "1"/"0" en `agua_iot/actuadores/bomba`.
-  /// Al ENCENDER: activa automáticamente la fuente prioritaria configurada en Settings.
-  /// Al APAGAR: apaga todas las fuentes secundarias (cascade-off).
+  /// La Bomba Principal es independiente de las fuentes (Calle/Lluvia).
+  /// Regla automática: se auto-apaga si el tanque de calle supera el umbral.
   void toggle() {
     if (state.isPending) return; // bloquear doble-tap mientras hay pendiente
 
@@ -92,30 +92,6 @@ class BombaNotifier extends StateNotifier<BombaButtonState> {
     final payload = desired ? '1' : '0';
 
     debugPrint('📤 BombaNOTIFIER → agua_iot/actuadores/bomba = $payload');
-
-    if (!desired) {
-      // ── CASCADE OFF ─────────────────────────────────────────────────────────
-      // Al apagar la Bomba Principal, apagar también todas las fuentes.
-      debugPrint('🔒 Cascade OFF → apagando bomba_calle, solenoide_calle, bomba_lluvia, solenoide_lluvia');
-      _repo.sendCommand('bomba_calle',     '0');
-      _repo.sendCommand('solenoide_calle', '0');
-      _repo.sendCommand('bomba_lluvia',    '0');
-      _repo.sendCommand('solenoide_lluvia','0');
-    } else {
-      // ── CASCADE ON ──────────────────────────────────────────────────────────
-      // Al encender la Bomba Principal, activar automáticamente la fuente
-      // configurada como prioritaria en Configuración → Fuente prioritaria.
-      final source = _prefs.prioritySource; // 'rain' | 'street'
-      if (source == 'rain') {
-        debugPrint('⚡ Cascade ON → activando fuente LLUVIA (prioritaria)');
-        _repo.sendCommand('bomba_lluvia',    '1');
-        _repo.sendCommand('solenoide_lluvia','1');
-      } else {
-        debugPrint('⚡ Cascade ON → activando fuente CALLE (prioritaria)');
-        _repo.sendCommand('bomba_calle',     '1');
-        _repo.sendCommand('solenoide_calle', '1');
-      }
-    }
 
     state = state.copyWith(
       isPending     : true,
@@ -140,6 +116,20 @@ class BombaNotifier extends StateNotifier<BombaButtonState> {
     });
   }
 
+  /// Llamado por el stream cuando el nivel del tanque de calle cambia.
+  /// Si la bomba está ON y el nivel supera el umbral → apagado automático.
+  void checkTankLevel(double streetTankLevel, double threshold) {
+    if (state.confirmedOn && streetTankLevel >= threshold) {
+      debugPrint('🛑 Auto-apagado: tanque calle $streetTankLevel% ≥ umbral ${threshold}% → bomba OFF');
+      _repo.sendCommand('bomba', '0');
+      state = state.copyWith(
+        isPending     : true,
+        desiredOn     : false,
+        commandSentAt : DateTime.now(),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _timeout?.cancel();
@@ -153,11 +143,17 @@ final bombaProvider =
     StateNotifierProvider<BombaNotifier, BombaButtonState>((ref) {
   final repo     = ref.watch(waterDataRepositoryProvider);
   final prefs    = ref.watch(preferencesServiceProvider);
-  final notifier = BombaNotifier(repo, prefs);
+  final notifier = BombaNotifier(repo);
 
   // Escucha el stream MQTT para recibir confirmaciones por eco
+  // y para verificar el nivel del tanque de calle.
   ref.listen(processedSystemStateProvider, (_, next) {
     notifier.syncFromMqtt(next.isPumpActive);
+    // Regla: auto-apagar bomba principal si tanque calle ≥ umbral configurado
+    notifier.checkTankLevel(
+      next.streetTankLevel,
+      prefs.minReserveThreshold < 95 ? 95 : prefs.minReserveThreshold,
+    );
   });
 
   return notifier;
