@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'repositories/water_data_repository.dart';
+import '../data/services/preferences_service.dart';
 import 'providers.dart';
 
 // ── Estado del botón de bomba ─────────────────────────────────────────────────
@@ -49,12 +50,13 @@ class BombaButtonState {
 
 class BombaNotifier extends StateNotifier<BombaButtonState> {
   final WaterDataRepository _repo;
+  final PreferencesService  _prefs;
   Timer? _timeout;
 
   /// Segundos máximos esperando el eco MQTT antes de cancelar el pending.
   static const _timeoutSec = 8;
 
-  BombaNotifier(this._repo) : super(const BombaButtonState());
+  BombaNotifier(this._repo, this._prefs) : super(const BombaButtonState());
 
   // ── Sincronización desde el stream MQTT ──────────────────────────────────
 
@@ -81,6 +83,8 @@ class BombaNotifier extends StateNotifier<BombaButtonState> {
   // ── Acción del usuario ────────────────────────────────────────────────────
 
   /// Togglea la bomba: publica "1"/"0" en `agua_iot/actuadores/bomba`.
+  /// Al ENCENDER: activa automáticamente la fuente prioritaria configurada en Settings.
+  /// Al APAGAR: apaga todas las fuentes secundarias (cascade-off).
   void toggle() {
     if (state.isPending) return; // bloquear doble-tap mientras hay pendiente
 
@@ -89,13 +93,37 @@ class BombaNotifier extends StateNotifier<BombaButtonState> {
 
     debugPrint('📤 BombaNOTIFIER → agua_iot/actuadores/bomba = $payload');
 
+    if (!desired) {
+      // ── CASCADE OFF ─────────────────────────────────────────────────────────
+      // Al apagar la Bomba Principal, apagar también todas las fuentes.
+      debugPrint('🔒 Cascade OFF → apagando bomba_calle, solenoide_calle, bomba_lluvia, solenoide_lluvia');
+      _repo.sendCommand('bomba_calle',     '0');
+      _repo.sendCommand('solenoide_calle', '0');
+      _repo.sendCommand('bomba_lluvia',    '0');
+      _repo.sendCommand('solenoide_lluvia','0');
+    } else {
+      // ── CASCADE ON ──────────────────────────────────────────────────────────
+      // Al encender la Bomba Principal, activar automáticamente la fuente
+      // configurada como prioritaria en Configuración → Fuente prioritaria.
+      final source = _prefs.prioritySource; // 'rain' | 'street'
+      if (source == 'rain') {
+        debugPrint('⚡ Cascade ON → activando fuente LLUVIA (prioritaria)');
+        _repo.sendCommand('bomba_lluvia',    '1');
+        _repo.sendCommand('solenoide_lluvia','1');
+      } else {
+        debugPrint('⚡ Cascade ON → activando fuente CALLE (prioritaria)');
+        _repo.sendCommand('bomba_calle',     '1');
+        _repo.sendCommand('solenoide_calle', '1');
+      }
+    }
+
     state = state.copyWith(
       isPending     : true,
       desiredOn     : desired,
-      commandSentAt : DateTime.now(), // marca el timestamp del envío
+      commandSentAt : DateTime.now(),
     );
 
-    // Publicación directa al tópico del actuador
+    // Publicación al tópico de la bomba principal
     _repo.sendCommand('bomba', payload);
 
     // Timeout de seguridad
@@ -124,7 +152,8 @@ class BombaNotifier extends StateNotifier<BombaButtonState> {
 final bombaProvider =
     StateNotifierProvider<BombaNotifier, BombaButtonState>((ref) {
   final repo     = ref.watch(waterDataRepositoryProvider);
-  final notifier = BombaNotifier(repo);
+  final prefs    = ref.watch(preferencesServiceProvider);
+  final notifier = BombaNotifier(repo, prefs);
 
   // Escucha el stream MQTT para recibir confirmaciones por eco
   ref.listen(processedSystemStateProvider, (_, next) {
