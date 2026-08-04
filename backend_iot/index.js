@@ -669,7 +669,7 @@ function evaluarReglasInteligentes(topic) {
     }
 
     // ── Regla 3: Presión baja persistente (20s) → failover ────────────────
-    if (s.presion > 0 && s.presion < s.MIN_PRESION) {
+    if (sistemaActivo && s.presion > 0 && s.presion < s.MIN_PRESION) {
         if (!s.presionBajaDesde) {
             s.presionBajaDesde = now;
         } else if (now - s.presionBajaDesde >= s.WINDOW_PRESION) {
