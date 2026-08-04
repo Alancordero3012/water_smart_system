@@ -35,10 +35,11 @@ class SmartRulesService {
   SmartRulesService(this._preferences, this._repo);
 
   // ── Umbrales estáticos (fallback si no hay historial suficiente) ──────────
-  static const double _staticMinPressure    = 10.0;  // PSI
-  static const double _staticMaxPressure    = 45.0;  // PSI
-  static const double _staticMinFlowAnomaly = 0.5;   // L/min
-  static const int    _faultWindowSec       = 30;
+  // ⚠️ Ajustados para presentación: coinciden con index.js para evitar cortes falsos.
+  static const double _staticMinPressure    = 3.0;    // PSI (antes 10 — demasiado agresivo sin sensor)
+  static const double _staticMaxPressure    = 80.0;   // PSI (antes 45)
+  static const double _staticMinFlowAnomaly = 5.0;    // L/min (antes 0.5 — disparaba con flujo=0)
+  static const int    _faultWindowSec       = 120;    // s (antes 30 — muy poco tiempo para estabilizar)
   static const int    _minSamplesForAdaptive = 50; // mínimo de muestras para usar umbrales adaptativos
 
   // ── Umbrales adaptativos (se cargan desde /api/thresholds) ───────────────
@@ -48,7 +49,7 @@ class SmartRulesService {
   bool   _adaptiveLoaded         = false;
   DateTime? _lastThresholdLoad;
 
-  static const double _minTankLevel   = 15.0;
+  static const double _minTankLevel   = 5.0;   // % (antes 15 — apagaba con tanques casi llenos)
   static const _failoverCooldown      = Duration(seconds: 90);
 
   // ── Estado interno ────────────────────────────────────────────────────────

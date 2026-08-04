@@ -131,12 +131,24 @@ class LocalBridgeRepository implements WaterDataRepository {
       case _topicTanqueCalle:  next = next.copyWith(streetTankLevel: value); break;
       case _topicTurbidez:    next = next.copyWith(turbidity: value); break;
       // Actuadores: completamente desacoplados por tópico
-      case _topicBomba:          next = next.copyWith(isPumpActive: value > 0.5); break;
-      case _topicSolenoide:      next = next.copyWith(isSolenoidOpen: value > 0.5); break;
-      case _topicBombaCalle:     next = next.copyWith(isBombaCalleActive: value > 0.5); break;
-      case _topicSolenoideCalle: next = next.copyWith(isSolenoideCalleOpen: value > 0.5); break;
-      case _topicBombaLluvia:    next = next.copyWith(isBombaLluviaActive: value > 0.5); break;
-      case _topicSolenoideL:     next = next.copyWith(isSoleLluviaOpen: value > 0.5); break;
+      case _topicBomba:
+        debugPrint('[BRIDGE-RX] 🔌 bomba=$value');
+        next = next.copyWith(isPumpActive: value > 0.5); break;
+      case _topicSolenoide:
+        debugPrint('[BRIDGE-RX] 🔌 solenoide=$value');
+        next = next.copyWith(isSolenoidOpen: value > 0.5); break;
+      case _topicBombaCalle:
+        debugPrint('[BRIDGE-RX] 🔌 bomba_calle=$value');
+        next = next.copyWith(isBombaCalleActive: value > 0.5); break;
+      case _topicSolenoideCalle:
+        debugPrint('[BRIDGE-RX] 🔌 solenoide_calle=$value');
+        next = next.copyWith(isSolenoideCalleOpen: value > 0.5); break;
+      case _topicBombaLluvia:
+        debugPrint('[BRIDGE-RX] 🔌 bomba_lluvia=$value');
+        next = next.copyWith(isBombaLluviaActive: value > 0.5); break;
+      case _topicSolenoideL:
+        debugPrint('[BRIDGE-RX] 🔌 solenoide_lluvia=$value');
+        next = next.copyWith(isSoleLluviaOpen: value > 0.5); break;
       default: return;
     }
 

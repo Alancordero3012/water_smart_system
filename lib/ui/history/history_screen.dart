@@ -1,4 +1,4 @@
-﻿// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -134,6 +134,34 @@ class _TabEnVivo extends ConsumerWidget {
                         getDrawingHorizontalLine: (_) =>
                             FlLine(color: Colors.white10, strokeWidth: 1),
                       ),
+                      lineTouchData: LineTouchData(
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipColor: (LineBarSpot touchedSpot) => const Color(0xFF1E293B).withOpacity(0.9), // Dark elegant background
+                          getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                            return touchedSpots.map((spot) {
+                              String label = '';
+                              String unit = '';
+                              if (spot.barIndex == 0) {
+                                label = 'Presión: ';
+                                unit = ' PSI';
+                              } else if (spot.barIndex == 1) {
+                                label = 'Lluvia: ';
+                                unit = '%';
+                              } else if (spot.barIndex == 2) {
+                                label = 'Calle: ';
+                                unit = '%';
+                              }
+                              return LineTooltipItem(
+                                '$label${spot.y.toStringAsFixed(1)}$unit',
+                                TextStyle(
+                                  color: spot.bar.color ?? Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              );
+                            }).toList();
+                          },
+                        ),
+                      ),
                       titlesData: FlTitlesData(
                         bottomTitles: AxisTitles(
                           sideTitles: SideTitles(
@@ -188,7 +216,7 @@ class _TabEnVivo extends ConsumerWidget {
                       Text(
                         readings.length < 2
                             ? 'Sin datos suficientes aún'
-                            : '${savedLiters.toStringAsFixed(1)} L  (Δnivel × ${cap.toStringAsFixed(0)} L tanque)',
+                            : '${savedLiters.toInt()} Litros ahorrados hoy',
                         style: const TextStyle(color: Colors.white54, fontSize: 11),
                       ),
                     ],
@@ -288,8 +316,8 @@ class _TabSieteDias extends ConsumerWidget {
                     getTooltipItem: (group, gi, rod, ri) {
                       final d = dias[group.x];
                       final label = ri == 0
-                          ? '💧 Lluvia: ${d.litrosLluvia.toStringAsFixed(1)} L'
-                          : '🏙️ Calle:  ${d.litrosCalle.toStringAsFixed(1)} L';
+                          ? '💧 Lluvia: ${d.litrosLluvia.toInt()} Litros'
+                          : '🏙️ Calle:  ${d.litrosCalle.toInt()} Litros';
                       return BarTooltipItem(
                         label,
                         const TextStyle(color: Colors.white, fontSize: 11),
@@ -320,7 +348,7 @@ class _TabSieteDias extends ConsumerWidget {
                       showTitles: true,
                       reservedSize: 40,
                       getTitlesWidget: (v, _) => Text(
-                        '${v.toInt()}L',
+                        '${v.toInt()} L',
                         style: const TextStyle(fontSize: 9, color: Colors.white38),
                       ),
                     ),
@@ -366,11 +394,11 @@ class _TabSieteDias extends ConsumerWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              _StatChip(label: 'Total lluvia', value: '${totalLluvia.toStringAsFixed(0)} L', color: const Color(0xFF00B4D8)),
+              _StatChip(label: 'Lluvia Usada', value: '${totalLluvia.toInt()} L', color: const Color(0xFF00B4D8)),
               const SizedBox(width: 8),
-              _StatChip(label: 'Total calle',  value: '${totalCalle.toStringAsFixed(0)} L',  color: const Color(0xFF48CAE4)),
+              _StatChip(label: 'Calle Usada',  value: '${totalCalle.toInt()} L',  color: const Color(0xFF48CAE4)),
               const SizedBox(width: 8),
-              _StatChip(label: 'Eficiencia',   value: '${efic.toStringAsFixed(1)}%',         color: Colors.greenAccent),
+              _StatChip(label: 'Eficiencia',   value: '${efic.toInt()}%',         color: Colors.greenAccent),
             ],
           ),
         ],
@@ -479,12 +507,12 @@ class _TabAhorro extends ConsumerWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '${eficiencia.toStringAsFixed(1)}% lluvia',
+                      '${eficiencia.toInt()}% Lluvia',
                       style: const TextStyle(
                           fontSize: 11, color: Color(0xFF00B4D8), fontWeight: FontWeight.w600),
                     ),
                     Text(
-                      '${(100 - eficiencia).toStringAsFixed(1)}% calle',
+                      '${(100 - eficiencia).toInt()}% Calle',
                       style: TextStyle(fontSize: 11, color: Colors.white.withAlpha(100)),
                     ),
                   ],
@@ -537,7 +565,7 @@ class _TabAhorro extends ConsumerWidget {
                 _MetricRow(
                   icon: Icons.water_drop,
                   label: 'Total consumido',
-                  value: '${total.toStringAsFixed(1)} L',
+                  value: '${total.toInt()} Litros',
                   color: Colors.cyanAccent,
                 ),
                 const Divider(color: Colors.white10, height: 16),

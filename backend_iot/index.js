@@ -342,6 +342,22 @@ client.on('connect', () => {
             console.error('❌ Error al suscribirse a los tópicos MQTT:', err);
         } else {
             console.log('📡 Suscrito correctamente a los tópicos:', topics.join(', '));
+
+            // ── 🧹 Limpiar mensajes retenidos de actuadores ───────────────────
+            // Al reconectar el backend, borramos cualquier retained "1" en el broker
+            // para que los ESP32 no reciban comandos viejos al conectarse.
+            const actuadorTopics = [
+                'agua_iot/actuadores/bomba',
+                'agua_iot/actuadores/solenoide',
+                'agua_iot/actuadores/bomba_calle',
+                'agua_iot/actuadores/solenoide_calle',
+                'agua_iot/actuadores/bomba_lluvia',
+                'agua_iot/actuadores/solenoide_lluvia',
+            ];
+            actuadorTopics.forEach(t => {
+                client.publish(t, '0', { qos: 1, retain: true });
+            });
+            console.log('🧹 Retained actuator states cleared → all = 0');
         }
     });
 });
@@ -416,13 +432,13 @@ const sistemaEstado = {
     presionBajaDesde : null,
     lastFailover     : null,
     failoverCooldownMs: 90000,
-    // Umbrales
-    MIN_PRESION    : 10,
-    MAX_PRESION    : 45,
-    MIN_FLUJO_FUGA : 0.5,
+    // Umbrales (Relajados temporalmente para la presentación)
+    MIN_PRESION    : 3,      // Antes 10. Solo apagará si cae a casi 0 PSI
+    MAX_PRESION    : 80,     // Antes 45. Solo apagará si hay una presión brutal
+    MIN_FLUJO_FUGA : 5.0,    // Antes 0.5. Ignora pequeñas fugas o goteos
     MIN_TANK_NIVEL : 15,
-    WINDOW_ROTURA  : 30000,
-    WINDOW_PRESION : 20000,
+    WINDOW_ROTURA  : 120000, // Antes 30s. Ahora espera 2 minutos de flujo 0 antes de apagar
+    WINDOW_PRESION : 120000, // Antes 20s. Ahora espera 2 minutos de baja presión antes de apagar
     // ── Heartbeat ESP32s (Regla 11) ────────────────────────────────
     // null = nunca visto, Date = último heartbeat recibido
     lastHeartbeatCalle  : null,
@@ -598,10 +614,10 @@ function evaluarReglasInteligentes(topic) {
 
     // ── Regla 4: Presión anómala ALTA ─────────────────────────────────────
     if (sistemaActivo && s.presion > s.MAX_PRESION) {
-        const fuenteActiva = getFuenteActiva();
-        console.log(`⚠️ Presión muy alta (${s.presion} PSI) — deteniendo bomba ${fuenteActiva}`);
-        autoComando(`agua_iot/actuadores/bomba_${fuenteActiva}`, 0, 'presion_alta');
-        autoNotificacion('presion_critica_alta', { presion: s.presion, fuente: fuenteActiva, limite: s.MAX_PRESION });
+        const fuente = getFuenteActiva();
+        console.log(`⚠️ Presión muy alta (${s.presion} PSI) — deteniendo bomba ${fuente}`);
+        autoComando(`agua_iot/actuadores/bomba_${fuente}`, 0, 'presion_alta');
+        autoNotificacion('presion_critica_alta', { presion: s.presion, fuente: fuente, limite: s.MAX_PRESION });
         return;
     }
 
@@ -609,10 +625,9 @@ function evaluarReglasInteligentes(topic) {
     if (sistemaActivo) {
         const dPdt = getRateOfChange(pressureBuffer); // PSI/segundo
         if (dPdt > 3.0 && s.presion > (s.MAX_PRESION * 0.75)) {
-            const fuenteActiva = getFuenteActiva();
-            console.log(`⚡ Presión subiendo rápido (${dPdt.toFixed(2)} PSI/s) — pre-alerta en ${fuenteActiva}`);
+            console.log(`⚡ Presión subiendo rápido (${dPdt.toFixed(2)} PSI/s) — pre-alerta en ${getFuenteActiva()}`);
             autoNotificacion('tendencia_presion_alta', {
-                fuente    : fuenteActiva,
+                fuente    : getFuenteActiva(),
                 presion   : s.presion,
                 tasa_cambio: dPdt.toFixed(2),
                 mensaje   : `Presión subiendo ${dPdt.toFixed(1)} PSI/s — posible golpe de ariete`,
@@ -626,57 +641,55 @@ function evaluarReglasInteligentes(topic) {
         return;
     }
 
-    if (!sistemaActivo) return; // Resto de reglas requieren sistema activo
-
-    // ── GAP 7: Correlación nivel-flujo (sensor atascado vs rotura real) ───
-    // Si el nivel del tanque activo cae rápido (>2%/min) pero el flujo reporta 0
-    // → el sensor de flujo puede estar atascado (no es rotura real).
-    const fuenteActiva = getFuenteActiva();
-    if (fuenteActiva) {
-        const levelBuf = fuenteActiva === 'calle' ? levelCalleBuf : levelLluviaBuf;
-        const dNdt = getRateOfChange(levelBuf); // %/segundo
-        const dNdtPerMin = dNdt * 60; // %/minuto
-        if (dNdtPerMin < -2.0 && s.flujo < 0.05) {
-            console.log(`🔧 [Correlación] Nivel cayendo (${dNdtPerMin.toFixed(2)}%/min) pero flujo=0 → posible sensor flujo atascado`);
-            autoNotificacion('sensor_flujo_posiblemente_atascado', {
-                fuente       : fuenteActiva,
-                caida_nivel  : dNdtPerMin.toFixed(2),
-                flujo        : s.flujo,
-                mensaje      : `Nivel cae ${Math.abs(dNdtPerMin).toFixed(1)}%/min con flujo=0 — verificar sensor de caudal`,
-            });
-        }
+    if (!sistemaActivo) {
+        // 🔄 Resetear temporizadores para que no disparen al siguiente encendido
+        s.presionBajaDesde = null;
+        s.flujoZeroDesde   = null;
+        return; // Resto de reglas requieren que el sistema esté operando
     }
 
-    // ── Regla 1: Rotura de tubería (flujo cero con sistema activo 30s) ────
-    const solAbierto = s.solenoideCalle || s.soleLluvia;
-    if (solAbierto && s.flujo < 0.1) {
+    // ── GAP 7: Correlación nivel-flujo (sensor atascado vs rotura real) ───
+    const dNdt = getRateOfChange(levelCalleBuf); // %/segundo (asumiendo que llena tanque calle)
+    const dNdtPerMin = dNdt * 60; // %/minuto
+    if (dNdtPerMin > 2.0 && s.flujo < 0.05) { // Si sube rápido pero flujo=0
+        console.log(`🔧 [Correlación] Nivel subiendo (${dNdtPerMin.toFixed(2)}%/min) pero flujo=0 → posible sensor flujo atascado`);
+        autoNotificacion('sensor_flujo_posiblemente_atascado', {
+            fuente       : getFuenteActiva(),
+            caida_nivel  : dNdtPerMin.toFixed(2),
+            flujo        : s.flujo,
+            mensaje      : `Nivel sube ${dNdtPerMin.toFixed(1)}%/min con flujo=0 — verificar sensor de caudal`,
+        });
+    }
+
+    // ── Regla 1: Rotura de tubería (flujo cero con sistema activo) ────
+    if (s.flujo < 0.1) {
         if (!s.flujoZeroDesde) {
             s.flujoZeroDesde = now;
         } else if (now - s.flujoZeroDesde >= s.WINDOW_ROTURA) {
-            const fa = getFuenteActiva();
             const elapsed = Math.round((now - s.flujoZeroDesde) / 1000);
-            console.log(`⛔ Flujo cero ${elapsed}s — rotura en ${fa}`);
+            const fuente = getFuenteActiva();
+            console.log(`⛔ Flujo cero ${elapsed}s — rotura detectada en fuente ${fuente}`);
+            autoComando(`agua_iot/actuadores/bomba_${fuente}`, 0, 'rotura_tuberia');
             autoNotificacion('rotura_tuberia', {
-                fuente  : fa,
+                fuente  : fuente,
                 elapsed : elapsed,
                 presion : s.presion,
-                mensaje : `Flujo=0 por ${elapsed}s con bomba activa en ${fa} (Presión: ${s.presion.toFixed(1)} PSI)`,
+                mensaje : `Flujo=0 por ${elapsed}s con bomba ${fuente} activa (Presión: ${s.presion.toFixed(1)} PSI)`,
             });
-            ejecutarFailover(`rotura_tuberia_${fa}`);
         }
     } else {
         s.flujoZeroDesde = null; // Reset si flujo volvió
     }
 
-    // ── Regla 3: Presión baja persistente (20s) → failover ────────────────
-    if (sistemaActivo && s.presion > 0 && s.presion < s.MIN_PRESION) {
+    // ── Regla 3: Presión baja persistente ────────────────
+    if (s.presion > 0 && s.presion < s.MIN_PRESION) {
         if (!s.presionBajaDesde) {
             s.presionBajaDesde = now;
         } else if (now - s.presionBajaDesde >= s.WINDOW_PRESION) {
-            const fa = getFuenteActiva();
             const elapsed = Math.round((now - s.presionBajaDesde) / 1000);
-            console.log(`⚠️ Presión baja ${elapsed}s — failover desde ${fa}`);
-            ejecutarFailover(`presion_baja_${fa}`);
+            const fuente = getFuenteActiva();
+            console.log(`⚠️ Presión baja ${elapsed}s — apagando bomba ${fuente}`);
+            autoComando(`agua_iot/actuadores/bomba_${fuente}`, 0, 'presion_baja');
         }
     } else {
         s.presionBajaDesde = null;
@@ -1325,8 +1338,23 @@ wss.on('connection', (ws, req) => {
                 };
                 const topic = topicMap[msg.command];
                 if (topic) {
+                    // ── INTERLOCK DE SEGURIDAD (Exclusión Mutua) ──
+                    // Si se envía la orden de encender (1) a la Calle, apagamos forzosamente la Lluvia, y viceversa.
+                    if (String(msg.value) === "1") {
+                        if (msg.command === 'bomba_calle' || msg.command === 'solenoide_calle') {
+                            client.publish('agua_iot/actuadores/bomba_lluvia', '0', { qos: 1, retain: true });
+                            client.publish('agua_iot/actuadores/solenoide_lluvia', '0', { qos: 1, retain: true });
+                            console.log('🔒 Interlock: Apagando fuente Lluvia para evitar choque hidráulico.');
+                        } else if (msg.command === 'bomba_lluvia' || msg.command === 'solenoide_lluvia') {
+                            client.publish('agua_iot/actuadores/bomba_calle', '0', { qos: 1, retain: true });
+                            client.publish('agua_iot/actuadores/solenoide_calle', '0', { qos: 1, retain: true });
+                            console.log('🔒 Interlock: Apagando fuente Calle para evitar choque hidráulico.');
+                        }
+                    }
+
                     console.log(`🔧 Comando desde Flutter Web: ${topic} = ${msg.value}`);
-                    client.publish(topic, String(msg.value), { qos: 1, retain: true });
+                    // Sin retain: el ESP32 no debe recibir comandos viejos al reconectarse
+                    client.publish(topic, String(msg.value), { qos: 1, retain: false });
                 } else {
                     console.warn(`⚠️ Comando desconocido: ${msg.command}`);
                 }

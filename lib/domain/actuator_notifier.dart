@@ -86,28 +86,33 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
 
   // ── External sync (called by stream listener) ─────────────────────────────
 
-  /// Recibe el estado actualizado de TODOS los actuadores desde el stream MQTT.
-  /// Fuente Calle confirma con isBombaCalle + isSolCalle (desacoplado de BombaButton).
-  /// Fuente Lluvia confirma con isBombaLluvia + isSoleLluvia.
   void syncFromMqtt({
     required bool isBombaCalle,
     required bool isSolCalle,
     required bool isBombaLluvia,
     required bool isSoleLluvia,
   }) {
+    debugPrint('[ACT-SYNC] 📥 isBombaCalle=$isBombaCalle isSolCalle=$isSolCalle '
+        'isBombaLluvia=$isBombaLluvia isSoleLluvia=$isSoleLluvia '
+        '| pending=${state.pending} f1=${state.fuente1Active} f2=${state.fuente2Active}');
+
     // ── Fuente Calle ──────────────────────────────────────────────────────────
     if (state.pending == null || state.pending == FuenteType.fuente2) {
+      final newF1 = isBombaCalle && isSolCalle;
+      if (newF1 != state.fuente1Active) {
+        debugPrint('[ACT-SYNC] ⚠️ Fuente1 echo directo (pending=${state.pending}): f1Active → $newF1');
+      }
       state = state.copyWith(
-        fuente1Active    : isBombaCalle && isSolCalle,
+        fuente1Active    : newF1,
         pumpEchoReceived : isBombaCalle,
         solEchoReceived  : isSolCalle,
       );
     } else if (state.pending == FuenteType.fuente1) {
       final newPumpEcho = state.pumpEchoReceived || isBombaCalle;
       final newSolEcho  = state.solEchoReceived  || isSolCalle;
+      debugPrint('[ACT-SYNC] 🏭 Fuente1 pending — pumpEcho=$newPumpEcho solEcho=$newSolEcho');
       if (newPumpEcho && newSolEcho) {
-        // Confirma ENCENDIDO: ambos ecos llegaron como true
-        debugPrint('✅ Fuente Calle confirmada ON — bomba_calle + solenoide_calle');
+        debugPrint('[ACT-SYNC] ✅ Fuente Calle CONFIRMADA ON — f1Active=true, pending=null');
         _timeout?.cancel();
         state = state.copyWith(
           fuente1Active    : true,
@@ -116,8 +121,7 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
           solEchoReceived  : false,
         );
       } else if (!isBombaCalle && !isSolCalle && state.fuente1Active) {
-        // Confirma APAGADO: ambos llegaron como false y la fuente estaba ON
-        debugPrint('✅ Fuente Calle confirmada OFF — bomba_calle=0 + solenoide_calle=0');
+        debugPrint('[ACT-SYNC] ✅ Fuente Calle CONFIRMADA OFF — f1Active=false, pending=null');
         _timeout?.cancel();
         state = state.copyWith(
           fuente1Active    : false,
@@ -126,6 +130,7 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
           solEchoReceived  : false,
         );
       } else {
+        debugPrint('[ACT-SYNC] ⏳ Fuente1 acumulando ecos: pump=$newPumpEcho sol=$newSolEcho');
         state = state.copyWith(
           pumpEchoReceived: newPumpEcho,
           solEchoReceived : newSolEcho,
@@ -135,17 +140,21 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
 
     // ── Fuente 2 ────────────────────────────────────────────────────────────
     if (state.pending == null || state.pending == FuenteType.fuente1) {
+      final newF2 = isBombaLluvia && isSoleLluvia;
+      if (newF2 != state.fuente2Active) {
+        debugPrint('[ACT-SYNC] ⚠️ Fuente2 echo directo (pending=${state.pending}): f2Active → $newF2');
+      }
       state = state.copyWith(
-        fuente2Active      : isBombaLluvia && isSoleLluvia,
+        fuente2Active      : newF2,
         pump2EchoReceived  : isBombaLluvia,
         sol2EchoReceived   : isSoleLluvia,
       );
     } else if (state.pending == FuenteType.fuente2) {
       final newPump2Echo = state.pump2EchoReceived || isBombaLluvia;
       final newSol2Echo  = state.sol2EchoReceived  || isSoleLluvia;
+      debugPrint('[ACT-SYNC] 🌧️ Fuente2 pending — pumpEcho=$newPump2Echo solEcho=$newSol2Echo');
       if (newPump2Echo && newSol2Echo) {
-        // Confirma ENCENDIDO: ambos ecos llegaron como true
-        debugPrint('✅ Fuente Lluvia confirmada ON — bomba_lluvia + solenoide_lluvia');
+        debugPrint('[ACT-SYNC] ✅ Fuente Lluvia CONFIRMADA ON — f2Active=true, pending=null');
         _timeout?.cancel();
         state = state.copyWith(
           fuente2Active      : true,
@@ -154,8 +163,7 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
           sol2EchoReceived   : false,
         );
       } else if (!isBombaLluvia && !isSoleLluvia && state.fuente2Active) {
-        // Confirma APAGADO: ambos llegaron como false y la fuente estaba ON
-        debugPrint('✅ Fuente Lluvia confirmada OFF — bomba_lluvia=0 + solenoide_lluvia=0');
+        debugPrint('[ACT-SYNC] ✅ Fuente Lluvia CONFIRMADA OFF — f2Active=false, pending=null');
         _timeout?.cancel();
         state = state.copyWith(
           fuente2Active      : false,
@@ -164,6 +172,7 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
           sol2EchoReceived   : false,
         );
       } else {
+        debugPrint('[ACT-SYNC] ⏳ Fuente2 acumulando ecos: pump=$newPump2Echo sol=$newSol2Echo');
         state = state.copyWith(
           pump2EchoReceived: newPump2Echo,
           sol2EchoReceived : newSol2Echo,
@@ -174,25 +183,23 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
 
   // ── User command ──────────────────────────────────────────────────────────
 
-  //  ⚠️ REGLA DE EXCLUSIÓN MUTUA:
-  //  Fuente 1 (CALLE) y Fuente 2 (LLUVIA) NO pueden estar activas al mismo tiempo.
-  //  Si se intenta encender una mientras la otra está activa, primero se apaga
-  //  la activa y luego se enciende la nueva (con el debounce normal como buffer).
-
   void toggle(FuenteType fuente, {bool bypassInterlock = false}) {
-    if (state.pending != null) return;
+    debugPrint('[ACT-TOGGLE] 🔘 toggle(${fuente.name}) | pending=${state.pending} '
+        'f1=${state.fuente1Active} f2=${state.fuente2Active}');
+    if (state.pending != null) {
+      debugPrint('[ACT-TOGGLE] ⏳ BLOQUEADO — ya hay operación pendiente: ${state.pending}');
+      return;
+    }
 
     if (fuente == FuenteType.fuente1) {
       final desired = !state.fuente1Active;
       final value   = desired ? '1' : '0';
+      debugPrint('[ACT-TOGGLE] 🏭 Fuente1(CALLE): desired=$desired');
 
-      // ── INTERLOCK (salteado en modo prueba) ─────────────────────────────────────────
-      // Si queremos ENCENDER Fuente 1 y Fuente 2 está activa → apagar Fuente 2
       if (!bypassInterlock && desired && state.fuente2Active) {
-        debugPrint('🔒 Interlock: apagando Fuente 2 (LLUVIA) → Fuente 1 (CALLE) tomará el control');
+        debugPrint('[ACT-TOGGLE] 🔒 Interlock: apagando Fuente2(LLUVIA) primero');
         _repo.sendCommand('bomba_lluvia',     '0');
         _repo.sendCommand('solenoide_lluvia', '0');
-        // El eco llegará y actualizará fuente2Active=false vía syncFromMqtt
       }
 
       state = state.copyWith(
@@ -202,13 +209,15 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
       );
       _debounce?.cancel();
       _debounce = Timer(const Duration(milliseconds: _debounceMs), () {
-        debugPrint('📤 Fuente 1 (CALLE) → bomba_calle=$value, solenoide_calle=$value');
+        debugPrint('[ACT-TOGGLE] 📤 Debounce fired → bomba_calle=$value solenoide_calle=$value');
         _repo.sendCommand('bomba_calle',     value);
         _repo.sendCommand('solenoide_calle', value);
         _timeout?.cancel();
         _timeout = Timer(const Duration(seconds: _timeoutSec), () {
           if (state.pending == FuenteType.fuente1) {
-            debugPrint('⚠️ Timeout Fuente 1 — forzando estado=$desired');
+            debugPrint('[ACT-TIMEOUT] ⚠️ TIMEOUT Fuente1 (${_timeoutSec}s sin eco). '
+                'pump=${state.pumpEchoReceived} sol=${state.solEchoReceived}. '
+                'Forzando fuente1Active=${desired && (state.pumpEchoReceived || state.solEchoReceived)}');
             state = state.copyWith(
               fuente1Active    : desired && (state.pumpEchoReceived || state.solEchoReceived),
               pending          : null,
@@ -222,14 +231,12 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
       // ── Fuente 2: LLUVIA ─────────────────────────────────────────────────
       final desired = !state.fuente2Active;
       final value   = desired ? '1' : '0';
+      debugPrint('[ACT-TOGGLE] 🌧️ Fuente2(LLUVIA): desired=$desired');
 
-      // ── INTERLOCK (salteado en modo prueba) ─────────────────────────────────────────
-      // Si queremos ENCENDER Fuente 2 y Fuente 1 está activa → apagar Fuente 1
       if (!bypassInterlock && desired && state.fuente1Active) {
-        debugPrint('🔒 Interlock: apagando Fuente 1 (CALLE) → Fuente 2 (LLUVIA) tomará el control');
+        debugPrint('[ACT-TOGGLE] 🔒 Interlock: apagando Fuente1(CALLE) primero');
         _repo.sendCommand('bomba_calle',     '0');
         _repo.sendCommand('solenoide_calle', '0');
-        // El eco llegará y actualizará fuente1Active=false vía syncFromMqtt
       }
 
       state = state.copyWith(
@@ -239,13 +246,15 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
       );
       _debounce?.cancel();
       _debounce = Timer(const Duration(milliseconds: _debounceMs), () {
-        debugPrint('📤 Fuente 2 (LLUVIA) → bomba_lluvia=$value, solenoide_lluvia=$value');
+        debugPrint('[ACT-TOGGLE] 📤 Debounce fired → bomba_lluvia=$value solenoide_lluvia=$value');
         _repo.sendCommand('bomba_lluvia',     value);
         _repo.sendCommand('solenoide_lluvia', value);
         _timeout?.cancel();
         _timeout = Timer(const Duration(seconds: _timeoutSec), () {
           if (state.pending == FuenteType.fuente2) {
-            debugPrint('⚠️ Timeout Fuente 2 — forzando estado=$desired');
+            debugPrint('[ACT-TIMEOUT] ⚠️ TIMEOUT Fuente2 (${_timeoutSec}s sin eco). '
+                'pump=${state.pump2EchoReceived} sol=${state.sol2EchoReceived}. '
+                'Forzando fuente2Active=${desired && (state.pump2EchoReceived || state.sol2EchoReceived)}');
             state = state.copyWith(
               fuente2Active      : desired && (state.pump2EchoReceived || state.sol2EchoReceived),
               pending            : null,
