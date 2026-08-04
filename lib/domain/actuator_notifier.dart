@@ -106,10 +106,21 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
       final newPumpEcho = state.pumpEchoReceived || isBombaCalle;
       final newSolEcho  = state.solEchoReceived  || isSolCalle;
       if (newPumpEcho && newSolEcho) {
-        debugPrint('✅ Fuente Calle confirmada — bomba_calle + solenoide_calle');
+        // Confirma ENCENDIDO: ambos ecos llegaron como true
+        debugPrint('✅ Fuente Calle confirmada ON — bomba_calle + solenoide_calle');
         _timeout?.cancel();
         state = state.copyWith(
           fuente1Active    : true,
+          pending          : null,
+          pumpEchoReceived : false,
+          solEchoReceived  : false,
+        );
+      } else if (!isBombaCalle && !isSolCalle) {
+        // Confirma APAGADO: ambos llegaron como false
+        debugPrint('✅ Fuente Calle confirmada OFF — bomba_calle=0 + solenoide_calle=0');
+        _timeout?.cancel();
+        state = state.copyWith(
+          fuente1Active    : false,
           pending          : null,
           pumpEchoReceived : false,
           solEchoReceived  : false,
@@ -133,10 +144,21 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
       final newPump2Echo = state.pump2EchoReceived || isBombaLluvia;
       final newSol2Echo  = state.sol2EchoReceived  || isSoleLluvia;
       if (newPump2Echo && newSol2Echo) {
-        debugPrint('✅ Fuente Lluvia confirmada — bomba_lluvia + solenoide_lluvia');
+        // Confirma ENCENDIDO: ambos ecos llegaron como true
+        debugPrint('✅ Fuente Lluvia confirmada ON — bomba_lluvia + solenoide_lluvia');
         _timeout?.cancel();
         state = state.copyWith(
           fuente2Active      : true,
+          pending            : null,
+          pump2EchoReceived  : false,
+          sol2EchoReceived   : false,
+        );
+      } else if (!isBombaLluvia && !isSoleLluvia) {
+        // Confirma APAGADO: ambos llegaron como false
+        debugPrint('✅ Fuente Lluvia confirmada OFF — bomba_lluvia=0 + solenoide_lluvia=0');
+        _timeout?.cancel();
+        state = state.copyWith(
+          fuente2Active      : false,
           pending            : null,
           pump2EchoReceived  : false,
           sol2EchoReceived   : false,
