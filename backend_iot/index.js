@@ -1,4 +1,4 @@
-﻿require('dotenv').config();
+require('dotenv').config();
 const mqtt = require('mqtt');
 const mysql = require('mysql2/promise');
 const http = require('http');
@@ -1325,24 +1325,6 @@ wss.on('connection', (ws, req) => {
                 };
                 const topic = topicMap[msg.command];
                 if (topic) {
-                    // ── REGLA: Las fuentes no pueden activarse sin la Bomba Principal ──────
-                    const esFuente = ['bomba_calle', 'solenoide_calle', 'bomba_lluvia', 'solenoide_lluvia'].includes(msg.command);
-                    const intentandoEncender = String(msg.value) === '1';
-
-                    if (esFuente && intentandoEncender && !sistemaEstado.bombaPrincipal) {
-                        console.warn(`🔒 INTERLOCK: Intento de encender ${msg.command} sin Bomba Principal activa — BLOQUEADO`);
-                        // Notificar a Flutter del bloqueo
-                        if (ws.readyState === 1) {
-                            ws.send(JSON.stringify({
-                                type: 'interlock_block',
-                                reason: 'bomba_principal_off',
-                                command: msg.command,
-                                message: 'La Bomba Principal debe estar encendida antes de activar una fuente'
-                            }));
-                        }
-                        return; // No publicar el comando
-                    }
-
                     console.log(`🔧 Comando desde Flutter Web: ${topic} = ${msg.value}`);
                     client.publish(topic, String(msg.value), { qos: 1, retain: true });
                 } else {

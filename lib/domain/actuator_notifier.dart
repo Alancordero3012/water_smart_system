@@ -115,8 +115,8 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
           pumpEchoReceived : false,
           solEchoReceived  : false,
         );
-      } else if (!isBombaCalle && !isSolCalle) {
-        // Confirma APAGADO: ambos llegaron como false
+      } else if (!isBombaCalle && !isSolCalle && state.fuente1Active) {
+        // Confirma APAGADO: ambos llegaron como false y la fuente estaba ON
         debugPrint('✅ Fuente Calle confirmada OFF — bomba_calle=0 + solenoide_calle=0');
         _timeout?.cancel();
         state = state.copyWith(
@@ -153,8 +153,8 @@ class ActuatorNotifier extends StateNotifier<ActuatorState> {
           pump2EchoReceived  : false,
           sol2EchoReceived   : false,
         );
-      } else if (!isBombaLluvia && !isSoleLluvia) {
-        // Confirma APAGADO: ambos llegaron como false
+      } else if (!isBombaLluvia && !isSoleLluvia && state.fuente2Active) {
+        // Confirma APAGADO: ambos llegaron como false y la fuente estaba ON
         debugPrint('✅ Fuente Lluvia confirmada OFF — bomba_lluvia=0 + solenoide_lluvia=0');
         _timeout?.cancel();
         state = state.copyWith(
